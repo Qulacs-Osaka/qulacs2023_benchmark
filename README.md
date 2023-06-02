@@ -1,4 +1,4 @@
-# project_name
+# qulacs2023_benchmark
 
 This is a template repository for Python project.
 
@@ -8,8 +8,8 @@ Refer to a following documentation:
 - ja: https://docs.github.com/ja/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template
 
 Then rename following stuffs:
-* `project_name` in all files -> Your new project name
-* `project_name` directory -> Your new project name
-* `python-project-template` -> Your new GitHub repository name
+* `qulacs2023_benchmark` in all files -> Your new project name
+* `qulacs2023_benchmark` directory -> Your new project name
+* `qulacs2023_benchmark` -> Your new GitHub repository name
 
 It is recommended to use editor's replacement function. In VS Code, refer to [This document](https://code.visualstudio.com/Docs/editor/codebasics#_search-and-replace).

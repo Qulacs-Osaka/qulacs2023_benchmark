@@ -1,15 +1,15 @@
 [tool.poetry]
-name = "project_name"
+name = "qulacs2023_benchmark"
 version = "0.1.0"
 description = ""
 authors = ["Qulacs-Osaka <qulacs.osaka@gmail.com>"]
 license = "MIT"
 readme = "./README.md"
-repository = "https://github.com/Qulacs-Osaka/python-project-template"
-homepage = "https://github.com/Qulacs-Osaka/python-project-template"
+repository = "https://github.com/Qulacs-Osaka/qulacs2023_benchmark"
+homepage = "https://github.com/Qulacs-Osaka/qulacs2023_benchmark"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8,<3.12"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.0.0"
@@ -17,11 +17,6 @@ black = "^22.3.0"
 flake8 = "^4.0.1"
 mypy = "^0.942"
 isort = "^5.10.1"
-Sphinx = "^4.3.0"
-sphinx-book-theme = "^0.3.0"
-ipykernel = "^6.5.0"
-myst-nb = "^0.16.0"
-pytest-cov = "^3.0.0"
 
 [tool.isort]
 default_section = "THIRDPARTY"

@@ -35,9 +35,9 @@
 
 	// Required by `mounts`.
 	// c.f. https://code.visualstudio.com/remote/advancedcontainers/improve-performance#_use-a-targeted-named-volume
-	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace/project_name,type=bind,consistency=cached",
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace/qulacs2023_benchmark,type=bind,consistency=cached",
 
-	"workspaceFolder": "/workspace/project_name",
+	"workspaceFolder": "/workspace/qulacs2023_benchmark",
 
 	"mounts": [
 		"source=${localWorkspaceFolderBasename}-venv,target=${containerWorkspaceFolder}/.venv,type=volume"
