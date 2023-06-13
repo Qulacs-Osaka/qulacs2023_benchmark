@@ -1,15 +1,55 @@
 # qulacs2023_benchmark
 
-This is a template repository for Python project.
+## 目的
+このリポジトリは，新しい設計の Qulacs の行列演算バックエンドの選定を行う中で，各種ライブラリのベンチマークを取るためのリポジトリです．
 
-## How to use
-Refer to a following documentation:
-- en: https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template
-- ja: https://docs.github.com/ja/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template
+## ベンチマークの対象と変数
+- 対象となるライブラリ: OpenACC，SYCL，Qulacs(現行版)，Qulacs(AVX-512版)
+- 変数:
+  - 量子ビット数
+- 定数:
+  - 計測の繰り返し回数
+  - 回路の種類
+  - CPU や GPU に関する情報
 
-Then rename following stuffs:
-* `qulacs2023_benchmark` in all files -> Your new project name
-* `qulacs2023_benchmark` directory -> Your new project name
-* `qulacs2023_benchmark` -> Your new GitHub repository name
+## ベンチマークの流れ
+1. 対象となるライブラリを指定
+2. 指定したライブラリを用いた実装に対して，ベンチマークを取る
+3. 各実装は，各量子ビット数に対して，指定された繰り返し回数だけ実行時間(ms 単位)を計測し，その平均値を出力する
+4. 出力された実行時間やその他の情報を json ファイルに保存する(古い計測結果は上書き)
 
-It is recommended to use editor's replacement function. In VS Code, refer to [This document](https://code.visualstudio.com/Docs/editor/codebasics#_search-and-replace).
+## ベンチマーク対象のプログラムの要件
+- プログラムは，`./benchmarks/${LIBRARY_NAME}/`(OpenACC の場合 `./benchmarks/OpenACC/`)に配置する
+- ビルドは，依存ライブラリのビルドも含めて `./benchmarks/${LIBRARY_NAME}/build.sh` に記述する
+- 実行は，`./benchmarks/${LIBRARY_NAME}/main` によって行う
+
+### 入力
+量子ビット数 `n` が標準入力として与えられます．
+例:
+```bash
+15
+```
+
+### 出力
+各量子ビット数に対する実行時間の平均値(ms 単位)を，空白区切りで出力します．
+例:
+```bash
+2.5e-3 5.1e-3 1.1e-2 2.3e-2 4.7e-2 9.5e-2 1.9e-1 3.8e-1 7.6e-1 1.5 3.0 6.0
+```
+
+### 実装例
+```cpp
+#include <iostream>
+
+int main() {
+    int n;
+    std::cin >> n;
+    std::cout << n << std::endl;
+
+    // ここに計測対象のプログラムを記述
+
+    for (auto result : results) {
+        std::cout << result << " ";
+    }
+    return 0;
+}
