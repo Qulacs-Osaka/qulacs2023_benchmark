@@ -5,6 +5,7 @@ RUN apt-get update \
     ca-certificates \
     cmake \
     curl \
+    git \
     libboost-dev \
     libpython3-dev \
     python3 \
