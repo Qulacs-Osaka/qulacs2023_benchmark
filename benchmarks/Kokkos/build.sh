@@ -7,9 +7,13 @@ docker run --rm -u 0 -ti --mount type=bind,source="$(pwd)",target=/app my_kokkos
         if [ ! -d /app/include/kokkos ]; then \
             git clone --recursive https://github.com/kokkos/kokkos.git /app/include/kokkos; \
         fi && \
+        mkdir -p /app/include/kokkos/build && \
+        cd /app/include/kokkos/build && \
+        cmake .. && \
+        make install && \
+        
         mkdir -p /app/build && \
         cd /app/build && \
         cmake .. && \
         make && \
         cp myTarget ../main.out"
-        
