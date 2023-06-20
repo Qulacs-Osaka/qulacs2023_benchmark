@@ -1,6 +1,8 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 project(MyProject)
 
+set(KOKKOS_PATH "/app/include/kokkos") # <- Kokkosがインストールされているパスに変更してください
+set(CMAKE_PREFIX_PATH ${KOKKOS_PATH};${CMAKE_PREFIX_PATH})
 find_package(Kokkos REQUIRED)
 
 add_executable(myTarget main.cpp)
