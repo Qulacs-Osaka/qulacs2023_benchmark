@@ -1,9 +1,17 @@
 #!/bin/bash -e
 
-# DockerでLAMMPSのイメージをpull
-docker pull nvcr.io/hpc/lammps:patch_3Nov2022
+docker pull quay.io/cbgeo/kokkos
 
 cd $(dirname $0)
-docker run --rm --gpus all --mount type=bind,source="$(pwd)",target=/app nvcr.io/hpc/lammps:patch_3Nov2022 \
-    g++ /app/main.cpp -o /app/main.out
-cp run_main.sh main
+docker run --rm --mount type=bind,source="$(pwd)",target=/app quay.io/cbgeo/kokkos \
+    bash -c "\
+        if [ ! -d /app/include/kokkos ]; then \
+            git clone --recursive https://github.com/kokkos/kokkos.git /app/include/kokkos; \
+        fi && \
+        mkdir -p /app/build && \
+        cd /app/build && \
+        cmake .. \
+        -DKokkos_ROOT=/app/include/kokkos && \
+        make && \
+        cp myTarget ../main.out"
+        
