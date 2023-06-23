@@ -1,3 +1,0 @@
-[submodule "benchmarks/qulacs/qulacs"]
-	path = benchmarks/qulacs/qulacs
-	url = https://github.com/qulacs/qulacs
