@@ -18,9 +18,11 @@
 3. 各実装は，各量子ビット数に対して，指定された繰り返し回数だけ実行時間(ms 単位)を計測し，その平均値を出力する
 4. 出力された実行時間やその他の情報を json ファイルに保存する(古い計測結果は上書き)
 
-## ベンチマーク対象のプログラムの要件
+## ベンチマーク対象のプログラムのビルド/実行の要件
 - プログラムは，`./benchmarks/${LIBRARY_NAME}/`(OpenACC の場合 `./benchmarks/OpenACC/`)に配置する
-- ビルドは，依存ライブラリのビルドも含めて `./benchmarks/${LIBRARY_NAME}/build.sh` に記述する
+- 各ライブラリごとに Dockerfile を用意し，依存ライブラリのインストールなどを行う
+- ローカルの `./benchmarks/${LIBRARY_NAME}/` は，Docker コンテナの `/benchmarks/` にバインドマウントされる
+- ビルドは `./benchmarks/${LIBRARY_NAME}/build.sh` に記述する
 - 実行は，`./benchmarks/${LIBRARY_NAME}/main` によって行う
 
 ### 入力

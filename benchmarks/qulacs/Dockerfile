@@ -12,3 +12,10 @@ RUN apt-get update \
     python3-pip \
     wget \
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/qulacs/qulacs /qulacs \
+    && cd /qulacs \
+    && mkdir -p build \
+    && ./script/build_gcc_with_gpu.sh
+
+WORKDIR /benchmarks
