@@ -26,7 +26,7 @@
 - 実行は，`./benchmarks/${LIBRARY_NAME}/main` によって行う
 
 ### 入力
-量子ビット数 `n` と繰り返し回数 `r` が標準入力として与えられます．
+量子ビット数 `n` と繰り返し回数 `r` がコマンドライン引数として与えられます．
 ```
 n r
 ```
@@ -48,9 +48,13 @@ n r
 #include <iostream>
 
 int main() {
-    int n;
-    std::cin >> n;
-    std::cout << n << std::endl;
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+        return 1;
+    }
+
+    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
 
     // ここに計測対象のプログラムを記述
 
