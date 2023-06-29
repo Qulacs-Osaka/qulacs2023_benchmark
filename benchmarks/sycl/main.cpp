@@ -153,6 +153,41 @@ void update_with_cnot(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT
     update_with_single_control_single_target_gate(q, state_sycl, n, control, target, SingleQubitUpdaterX{});
 }
 
+// 注意: ソートされたtargetに対するmatrixの並びであることを前提
+void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, const std::vector<std::vector<Complex>>& matrix) {
+    sycl::buffer<Complex, 1> new_state_sycl(sycl::range<1>(1 << n));
+    int num_control = control_list.size(), num_target = target_list.size();
+    int control_mask = 0, target_mask = 0;
+    for(int idx : control_list) control_mask |= 1 << idx;
+    for(int idx : target_list) target_mask |= 1 << idx;
+    q.submit([&](sycl::handler& h) {
+        auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
+        auto new_state_acc = new_state_sycl.get_access<sycl::access::mode::read_write>(h);
+        h.parallel_for<class nstream>(sycl::range<3>(1 << (n-num_control-num_target), 1 << num_target, 1 << num_target), [=](sycl::id<3> it) {
+            int iter_raw = 0, iter_col = 0;
+            int outer_idx = 0, target_idx = 0;
+            for(int i = 0; i < n; i++) {
+                if(control_mask >> i & 1) {
+                    iter_raw |= 1 << i;
+                    iter_col |= 1 << i;
+                } else if(target_mask >> i & 1) {
+                    iter_raw |= (it[1] >> target_idx & 1) << i;
+                    iter_col |= (it[2] >> target_idx & 1) << i;
+                    ++target_idx;
+                } else {
+                    iter_raw |= (it[0] >> outer_idx & 1) << i;
+                    iter_col |= (it[0] >> outer_idx & 1) << i;
+                    ++outer_idx;
+                }
+            }
+            new_state_acc[iter_raw] += matrix[iter_raw][iter_col] * state_acc[iter_col];
+        });
+        h.parallel_for<class nstream>(sycl::range<1>(1 << n), [=](sycl::id<1> it) {
+            state_acc[it[0]] = new_state_acc[it[0]];
+        });
+    });
+}
+
 int main() {
     constexpr int n = 4;
     
