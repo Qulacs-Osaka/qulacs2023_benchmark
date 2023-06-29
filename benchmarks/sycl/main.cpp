@@ -153,7 +153,7 @@ void update_with_cnot(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT
     update_with_single_control_single_target_gate(q, state_sycl, n, control, target, SingleQubitUpdaterX{});
 }
 
-// 注意: ソートされたtargetに対するmatrixの並びであることを前提
+// 注意: control_list,target_listはソートされている前提
 void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, const std::vector<std::vector<Complex>>& matrix) {
     sycl::buffer<Complex, 1> new_state_sycl(sycl::range<1>(1 << n));
     int num_control = control_list.size(), num_target = target_list.size();
@@ -165,11 +165,12 @@ void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sy
         auto new_state_acc = new_state_sycl.get_access<sycl::access::mode::read_write>(h);
         h.parallel_for<class nstream>(sycl::range<3>(1 << (n-num_control-num_target), 1 << num_target, 1 << num_target), [=](sycl::id<3> it) {
             int iter_raw = 0, iter_col = 0;
-            int outer_idx = 0, target_idx = 0;
+            int outer_idx = 0, control_idx = 0, target_idx = 0;
             for(int i = 0; i < n; i++) {
                 if(control_mask >> i & 1) {
-                    iter_raw |= 1 << i;
-                    iter_col |= 1 << i;
+                    iter_raw |= control_value[control_idx] << i;
+                    iter_col |= control_value[control_idx] << i;
+                    ++control_idx;
                 } else if(target_mask >> i & 1) {
                     iter_raw |= (it[1] >> target_idx & 1) << i;
                     iter_col |= (it[2] >> target_idx & 1) << i;
