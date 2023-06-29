@@ -99,6 +99,19 @@ void update_with_SWAP(Kokkos::View<CTYPE*> state_kokkos, UINT n, UINT target0, U
     Kokkos::fence();
 }
 
+void update_with_CNOT(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT control, UINT target) {
+    const ITYPE mask_control = 1ULL << control;
+    const ITYPE mask_target = 1ULL << target;
+    ITYPE ub = std::max(target, control);
+    ITYPE lb = std::min(target, control);
+    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n - ub - 1), 1ULL << (ub - lb - 1), 1ULL << lb});
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE &upper_bit_it, const ITYPE &middle_bit_it, const ITYPE &lower_bit_it) {
+        ITYPE i = (upper_bit_it << (ub + 1)) | (middle_bit_it << (lb + 1)) | lower_bit_it | mask_control;
+        Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[i | mask_target]);
+    });
+    Kokkos::fence();
+}
+
 int main() {
 Kokkos::initialize();
 {    
