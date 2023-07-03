@@ -112,31 +112,58 @@ void update_with_CNOT(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT control, 
     Kokkos::fence();
 }
 
+void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, const std::vector<std::vector<CTYPE>>& matrix) {
+    Kokkos::View<CTYPE*> new_state_kokkos("new_state_kokkos", 1ULL << n);
+    int num_control = control_list.size(), num_target = target_list.size();
+    int control_mask = 0, target_mask = 0;
+    for(int idx : control_list) control_mask |= 1 << idx;
+    for(int idx : target_list) target_mask |= 1 << idx;
+    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n - num_control - num_target), 1ULL << num_target, 1ULL << num_target});
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE &outer_bit_it, const ITYPE &target_bit_it1, const ITYPE &target_bit_it2) {
+        ITYPE iter_raw = 0, iter_col = 0;
+        int outer_idx = 0, control_idx = 0, target_idx = 0;
+        for(int i = 0; i < n; i++) {
+            if(control_mask >> i & 1) {
+                iter_raw |= control_value[control_idx] << i;
+                iter_col |= control_value[control_idx] << i;
+                ++control_idx;
+            } else if(target_mask >> i & 1) {
+                iter_raw |= (target_bit_it1 >> target_idx & 1) << i;
+                iter_col |= (target_bit_it2 >> target_idx & 1) << i;
+                ++target_idx;
+            } else {
+                iter_raw |= (outer_bit_it >> outer_idx & 1) << i;
+                iter_col |= (outer_bit_it >> outer_idx & 1) << i;
+                ++outer_idx;
+            }
+        }
+        Kokkos::atomic_add(&new_state_kokkos[iter_raw], matrix[iter_raw][iter_col] * state_kokkos[iter_col]);
+    });
+    Kokkos::fence();
+    Kokkos::deep_copy(state_kokkos, new_state_kokkos);
+}
+
 int main() {
 Kokkos::initialize();
 {    
-
     int n = 28;
-    std::vector<int64_t> results;
+    std::vector<double> results;  // change to double to store seconds
 
     for (int qubit = 4; qubit <= n; ++qubit) {
+        auto start_time = std::chrono::high_resolution_clock::now();
 
         Kokkos::View<CTYPE*> init_state("init_state", 1ULL << qubit);
         for(int i = 0; i < 1ULL << qubit; i++) init_state[i] = CTYPE(i, 0);
 
         Kokkos::View<CTYPE*> state(init_state);
 
-        auto start_time = std::chrono::high_resolution_clock::now();
-
         update_with_SWAP(state, qubit, 1, 3);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        double duration_sec = duration.count() / 1e6;
 
-        results.push_back(duration.count());
-
-        std::cout << duration.count() << std::endl;
-
+        results.push_back(duration_sec);
     }
     for(auto x : results) std::cout << x << ' ';
     std::cout << std::endl;
