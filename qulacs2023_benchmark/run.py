@@ -51,6 +51,9 @@ class BenchmarkCase:
         means = []
         for n_qubits in tqdm(range(self.n_qubits_begin, self.n_qubits_end + 1)):
             run_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
+            if run_result.returncode != 0:
+                raise RuntimeError(f"Failed to run {self.directory} image: {run_result.stderr}")
+
             with open(f"./benchmarks/{self.directory}/durations.txt", "r") as f:
                 mean = BenchmarkCase.calculate_mean(f.read().encode("utf-8"))
                 means.append(mean)

@@ -36,7 +36,8 @@ n r
 ```
 
 ### 出力
-量子ビット数 `n` の量子回路を繰り返し回数 `r` 回だけ実行し，それぞれの実行時間(ms 単位)を空白区切りで出力します．
+量子ビット数 `n` の量子回路を繰り返し回数 `r` 回だけ実行し，それぞれの実行時間(ms 単位)を空白区切りで `durations.txt` に出力します．
+CUDA のコンテナを利用すると標準出力にバージョンの情報などが出力されるため，ファイルに出力するようにしています．
 以下は繰り返し回数が5回の場合の出力例です．
 例:
 ```
@@ -56,10 +57,20 @@ int main() {
     const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
     const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
 
-    // ここに計測対象のプログラムを記述
+    /*
+    ここに計測対象のプログラムを記述
+    */
 
-    for (auto result : results) {
-        std::cout << result << " ";
+    std::ofstream ofs("durations.txt");
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file" << std::endl;
+        return 1;
     }
+
+    for (int i = 0; i < n_repeats; i++) {
+        ofs << measure() << " ";
+    }
+    ofs << std::endl;
+
     return 0;
 }
