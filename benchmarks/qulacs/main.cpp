@@ -1,6 +1,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <fstream>
 
 double measure() {
     const auto start = std::chrono::system_clock::now();
@@ -18,10 +19,16 @@ int main(int argc, char** argv) {
     const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
     const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
 
-    for (int i = 0; i < n_repeats; i++) {
-        std::cout << measure()<< " ";
+    std::ofstream ofs("durations.txt");
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file" << std::endl;
+        return 1;
     }
-    std::cout << std::endl;
+
+    for (int i = 0; i < n_repeats; i++) {
+        ofs << measure() << " ";
+    }
+    ofs << std::endl;
 
     return 0;
 }

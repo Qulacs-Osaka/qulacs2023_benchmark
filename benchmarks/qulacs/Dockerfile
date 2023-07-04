@@ -18,4 +18,14 @@ RUN git clone https://github.com/qulacs/qulacs /qulacs \
     && mkdir -p build \
     && ./script/build_gcc_with_gpu.sh
 
+# Set up a user with the same UID/GID as the host user to create files for benchmark output.
+# Without the following steps, the files created by the container is owned by root and it requires root permission to use the file in Python script.
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+RUN groupadd -g ${GROUP_ID} runner \
+    && useradd -u ${USER_ID} -g runner -s /bin/bash runner
+
+USER runner
+
 WORKDIR /benchmarks

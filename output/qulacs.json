@@ -1,0 +1,11 @@
+{
+    "directory": "qulacs",
+    "n_qubits_begin": 2,
+    "n_qubits_end": 4,
+    "n_repeat": 2,
+    "durations": [
+        1063.0,
+        1063.0,
+        1063.5
+    ]
+}

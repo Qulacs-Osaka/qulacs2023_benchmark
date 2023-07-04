@@ -1,9 +1,11 @@
 from dataclasses import asdict, dataclass
+from tqdm import tqdm
+import click
 import json
+import os
 import statistics
 import subprocess
 
-import click
 
 @dataclass
 class BenchmarkResult:
@@ -28,18 +30,32 @@ class BenchmarkCase:
     n_repeat: int
 
     def build_image(self) -> None:
-        subprocess.run(["docker", "build", "-t", f"qulacs2023_benchmarks/{self.directory}:latest", f"./benchmarks/{self.directory}/"])
+        user_id = os.getuid()
+        group_id = os.getgid()
+        print("Building image")
+        subprocess.run(["docker", "build", "--build-arg", f"USER_ID={user_id}", "--build-arg", f"GROUP_ID={group_id}", "-t", f"qulacs2023_benchmarks/{self.directory}:latest", f"./benchmarks/{self.directory}/"], capture_output=True)
 
     def run_benchmark(self) -> BenchmarkResult:
-        means = []
         self.build_image()
-        for n_qubits in range(self.n_qubits_begin, self.n_qubits_end + 1):
-            mount_config = f"type=bind,source=$(pwd)/benchmarks/{self.directory},target=/benchmarks"
-            image_tag = f"qulacs2023_benchmarks/{self.directory}:latest"
-            subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"], capture_output=True)
-            output = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
-            mean = BenchmarkCase.calculate_mean(output.stdout)
-            means.append(mean)
+
+        current_directory = os.getcwd()
+        mount_config = f"type=bind,source={current_directory}/benchmarks/{self.directory},target=/benchmarks"
+        image_tag = f"qulacs2023_benchmarks/{self.directory}:latest"
+
+        print("Running benchmark program")
+        build_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"], capture_output=True)
+        if build_result.returncode != 0:
+            raise RuntimeError(f"Failed to build {self.directory} image")
+
+        print("Running benchmark")
+        means = []
+        for n_qubits in tqdm(range(self.n_qubits_begin, self.n_qubits_end + 1)):
+            run_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
+            with open(f"./benchmarks/{self.directory}/durations.txt", "r") as f:
+                mean = BenchmarkCase.calculate_mean(f.read().encode("utf-8"))
+                means.append(mean)
+        print("Finished benchmark")
+
         return BenchmarkResult(self.directory, self.n_qubits_begin, self.n_qubits_end, self.n_repeat, means)
 
     def calculate_mean(output: bytes) -> float:
