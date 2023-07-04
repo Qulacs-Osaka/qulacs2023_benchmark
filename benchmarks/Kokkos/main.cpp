@@ -4,9 +4,18 @@
 #include <iostream>
 #include <algorithm>
 
+#ifdef KOKKOS_ENABLE_CUDA
+#include <thrust/complex.h>
+#endif
+
+
 using UINT = unsigned int;
 using ITYPE = unsigned long long;
-using CTYPE = std::complex<double>;
+#ifdef KOKKOS_ENABLE_CUDA
+    using CTYPE = thrust::complex<double>;
+#else
+    using CTYPE = std::complex<double>;
+#endif
 
 void update_with_x_double_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT target) {
     Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
@@ -75,7 +84,7 @@ void update_with_Ry(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UI
 
 void update_with_Rz(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UINT target) {
     const double angle_half = angle / 2;
-    const std::complex<double> phase0 = std::exp(std::complex<double>(0, -angle_half)), 
+    const CTYPE phase0 = std::exp(std::complex<double>(0, -angle_half)), 
                                phase1 = std::exp(std::complex<double>(0, angle_half));
     Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
@@ -112,12 +121,12 @@ void update_with_CNOT(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT control, 
     Kokkos::fence();
 }
 
-void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, const std::vector<std::vector<CTYPE>>& matrix) {
+void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n, const Kokkos::View<UINT*>& control_list, const Kokkos::View<UINT*>& control_value, const Kokkos::View<UINT*>& target_list, const Kokkos::View<CTYPE**>& matrix) {
     Kokkos::View<CTYPE*> new_state_kokkos("new_state_kokkos", 1ULL << n);
     int num_control = control_list.size(), num_target = target_list.size();
     int control_mask = 0, target_mask = 0;
-    for(int idx : control_list) control_mask |= 1 << idx;
-    for(int idx : target_list) target_mask |= 1 << idx;
+    for(int i = 0; i < (int)control_list.size(); ++i) control_mask |= 1 << control_list[i];
+    for(int i = 0; i < (int)target_list.size(); ++i) target_mask |= 1 << target_list[i];
     Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n - num_control - num_target), 1ULL << num_target, 1ULL << num_target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE &outer_bit_it, const ITYPE &target_bit_it1, const ITYPE &target_bit_it2) {
         ITYPE iter_raw = 0, iter_col = 0;
@@ -137,7 +146,7 @@ void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n, const 
                 ++outer_idx;
             }
         }
-        Kokkos::atomic_add(&new_state_kokkos[iter_raw], matrix[iter_raw][iter_col] * state_kokkos[iter_col]);
+        Kokkos::atomic_add(&new_state_kokkos(iter_raw), matrix(iter_raw, iter_col) * state_kokkos(iter_col));
     });
     Kokkos::fence();
     Kokkos::deep_copy(state_kokkos, new_state_kokkos);
@@ -153,11 +162,13 @@ Kokkos::initialize();
         auto start_time = std::chrono::high_resolution_clock::now();
 
         Kokkos::View<CTYPE*> init_state("init_state", 1ULL << qubit);
-        for(int i = 0; i < 1ULL << qubit; i++) init_state[i] = CTYPE(i, 0);
+        Kokkos::parallel_for(1ULL << qubit, KOKKOS_LAMBDA(int i) {
+            init_state(i) = CTYPE(i, 0);
+        });
 
         Kokkos::View<CTYPE*> state(init_state);
 
-        update_with_SWAP(state, qubit, 1, 3);
+        update_with_x_single_loop(state, qubit, 3);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);

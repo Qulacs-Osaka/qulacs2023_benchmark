@@ -1,5 +1,4 @@
-ARG TAG=latest
-FROM ubuntu:${TAG}
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
