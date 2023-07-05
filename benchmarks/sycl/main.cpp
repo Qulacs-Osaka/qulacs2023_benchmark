@@ -189,10 +189,16 @@ void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sy
     });
 }
 
-int main() {
-    constexpr int n = 4;
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+        return 1;
+    }
+
+    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
     
-    sycl::queue q(sycl::default_selector_v);
+    sycl::queue q(sycl::gpu_selector_v);
 
     std::vector<Complex> init_state(1 << n);
     for(int i = 0; i < 1 << n; i++) init_state[i] = i;
