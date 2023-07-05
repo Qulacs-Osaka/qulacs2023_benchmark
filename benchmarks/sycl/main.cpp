@@ -199,11 +199,67 @@ int main(int argc, char** argv) {
     const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
     const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
     
-    sycl::queue q(sycl::default_selector_v);
 
-    std::vector<Complex> init_state(1 << n_qubits);
-    for(int i = 0; i < 1 << n_qubits; i++) init_state[i] = i;
-    auto state_sycl = sycl::buffer(init_state.data(), sycl::range<1>(1 << n_qubits));
+    std::vector<unsigned long long> execution_time(n_repeats);
+    for(int repeat_itr = 0; repeat_itr < n_repeats; repeat_itr++) {
+        auto st_time =std::chrono::system_clock::now();
 
-    q.wait();
+        sycl::queue q(sycl::default_selector_v);
+        std::vector<Complex> init_state(1 << n_qubits);
+        for(int i = 0; i < 1 << n_qubits; i++) init_state[i] = i;
+        auto state_sycl = sycl::buffer(init_state.data(), sycl::range<1>(1 << n_qubits));
+        update_with_x(q, state_sycl, n_qubits, 0 % n_qubits);
+        update_with_h(q, state_sycl, n_qubits, 1 % n_qubits);
+        update_with_rx(q, state_sycl, n_qubits, 2 % n_qubits, M_PI / 4);
+        update_with_ry(q, state_sycl, n_qubits, 3 % n_qubits, -M_PI * 5 / 6);
+        update_with_rz(q, state_sycl, n_qubits, 4 % n_qubits, M_PI * 2 / 3);
+        update_with_cnot(q, state_sycl, n_qubits, 5 % n_qubits, 6 % n_qubits);
+        {
+            // sqrtX Gate Apply
+            std::vector<std::vector<Complex>> matrix = {{.5+.5j, .5-.5j}, {.5-.5j, .5+.5j}};
+            std::vector<Complex> matrix_1;
+            for(auto& row_elements : matrix) {
+                std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
+            }
+            sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(2, 2));
+            update_with_dense_matrix(q, state_sycl, n_qubits, {}, {}, {7 % n_qubits}, matrix_sycl);
+        }
+        {
+            // SWAP Gate Apply
+            std::vector<std::vector<Complex>> matrix = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}, {0, 0, 1, 0}};
+            std::vector<Complex> matrix_1;
+            for(auto& row_elements : matrix) {
+                std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
+            }
+            sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(4, 4));
+            update_with_dense_matrix(q, state_sycl, n_qubits, {}, {}, {8 % n_qubits, 9 % n_qubits}, matrix_sycl);
+        }
+        {
+            // CRZ(PI/3) Gate Apply        
+            std::vector<std::vector<Complex>> matrix = {{std::polar(1., -M_PI/6), 0}, {0, std::polar(1., M_PI/6)}};
+            std::vector<Complex> matrix_1;
+            for(auto& row_elements : matrix) {
+                std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
+            }
+            sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(2, 2));
+            update_with_dense_matrix(q, state_sycl, n_qubits, {10 % n_qubits}, {1}, {11 % n_qubits}, matrix_sycl);
+        }
+        q.wait();
+        
+        auto ed_time = std::chrono::system_clock::now();
+        execution_time[repeat_itr] = std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    }
+    
+    std::ofstream ofs("durations.txt");
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file" << std::endl;
+        return 1;
+    }
+
+    for (int i = 0; i < n_repeats; i++) {
+        ofs << execution_time[i] << " ";
+    }
+    ofs << std::endl;
+
+    return 0;
 }
