@@ -8,13 +8,13 @@ using Complex = std::complex<double>;
 
 class SingleQubitUpdaterX {
 public:
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         std::swap(a0, a1);
     }
 };
 class SingleQubitUpdaterY {
 public:
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
         a0 = {a1.imag(), -a1.real()};
         a1 = {-tmp.imag(), tmp.real()};
@@ -22,13 +22,13 @@ public:
 };
 class SingleQubitUpdaterZ {
 public:
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         a1 = -a1;
     }
 };
 class SingleQubitUpdaterH {
 public:
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         constexpr double sqrt1_2 = M_SQRT1_2;
         Complex tmp = a0;
         a0 = (a0 + a1) * sqrt1_2;
@@ -43,7 +43,7 @@ class SingleQubitUpdaterRX {
 public:
     SingleQubitUpdaterRX(double angle) : angle{angle}, cos_angle_2{cos(angle) / 2}, sin_angle_2{sin(angle) / 2} {}
     
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
         a0 = {
             a0.real() * cos_angle_2 + a1.imag() * sin_angle_2,
@@ -63,7 +63,7 @@ class SingleQubitUpdaterRY {
 public:
     SingleQubitUpdaterRY(double angle) : angle{angle}, cos_angle_2{cos(angle) / 2}, sin_angle_2{sin(angle) / 2} {}
     
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
         a0 = {
             a0.real() * cos_angle_2 - a1.real() * sin_angle_2,
@@ -83,7 +83,7 @@ class SingleQubitUpdaterRZ {
 public:
     SingleQubitUpdaterRZ(double angle) : angle{angle}, cos_angle_2{cos(angle) / 2}, sin_angle_2{sin(angle) / 2} {}
     
-    void operator()(Complex& a0, Complex& a1) {
+    void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
         a0 = {
             a0.real() * cos_angle_2 + a0.real() * sin_angle_2,
@@ -100,7 +100,7 @@ template <class SingleQubitUpdater>
 void update_with_single_target_gate(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target, const SingleQubitUpdater& updater) {
     q.submit([&](sycl::handler& h) {
         auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
-        h.parallel_for<class nstream>(sycl::range<2>(1 << (n - target - 1), 1 << target), [=](sycl::id<2> it) {
+        h.parallel_for(sycl::range<2>(1 << (n - target - 1), 1 << target), [=](sycl::id<2> it) {
             int i = (it[0] << (target + 1)) | it[1];
             int j = i | (1 << target);
             updater(state_acc[i], state_acc[j]);
@@ -113,14 +113,14 @@ void update_with_single_control_single_target_gate(sycl::queue& q, sycl::buffer<
     q.submit([&](sycl::handler& h) {
         auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
         if(target > control) {
-            h.parallel_for<class nstream>(sycl::range<3>(1 << (n-target-1), 1 << (target-control-1), 1 << control), [=](sycl::id<3> it) {
+            h.parallel_for(sycl::range<3>(1 << (n-target-1), 1 << (target-control-1), 1 << control), [=](sycl::id<3> it) {
                 int i = (it[0] << (target+1)) | (it[1] << (control+1)) | (1 << control) | it[2];
                 int j = i | (1 << target);
                 updater(state_acc[i], state_acc[j]);
             });
         } else {
-            h.parallel_for<class nstream>(sycl::range<3>(1 << (n-control-1), 1 << (control-target-1), 1 << target), [=](sycl::id<3> it) {
-                int i = (it[0] << (control+1)) (1 << control) | (it[1] << (target+1)) | it[2];
+            h.parallel_for(sycl::range<3>(1 << (n-control-1), 1 << (control-target-1), 1 << target), [=](sycl::id<3> it) {
+                int i = (it[0] << (control+1)) | (1 << control) | (it[1] << (target+1)) | it[2];
                 int j = i | (1 << target);
                 updater(state_acc[i], state_acc[j]);
             });
@@ -153,38 +153,39 @@ void update_with_cnot(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT
     update_with_single_control_single_target_gate(q, state_sycl, n, control, target, SingleQubitUpdaterX{});
 }
 
-// 注意: control_list,target_listはソートされている前提
-void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, const std::vector<std::vector<Complex>>& matrix) {
-    sycl::buffer<Complex, 1> new_state_sycl(sycl::range<1>(1 << n));
-    int num_control = control_list.size(), num_target = target_list.size();
-    int control_mask = 0, target_mask = 0;
+void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, sycl::buffer<Complex, 2>& matrix_sycl) {
+    int num_control = control_list.size(), num_target = target_list.size(), num_outer = n - num_control - num_target;
+    int control_mask = 0, control_value_mask = 0, target_mask = 0;
     for(int idx : control_list) control_mask |= 1 << idx;
+    for(int i = 0; i < num_control; i++) {
+        control_mask |= 1 << control_list[i];
+        if(control_value[i]) control_value_mask |= 1 << control_list[i];
+    }
     for(int idx : target_list) target_mask |= 1 << idx;
+    int outer_mask = (~(1 << n) - 1) & ~control_mask & ~target_mask;
+    sycl::buffer<int, 2> controlled_state_idx_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
+    sycl::buffer<Complex, 2> controlled_state_updated_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
     q.submit([&](sycl::handler& h) {
         auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
-        auto new_state_acc = new_state_sycl.get_access<sycl::access::mode::read_write>(h);
-        h.parallel_for<class nstream>(sycl::range<3>(1 << (n-num_control-num_target), 1 << num_target, 1 << num_target), [=](sycl::id<3> it) {
-            int iter_raw = 0, iter_col = 0;
-            int outer_idx = 0, control_idx = 0, target_idx = 0;
+        auto controlled_state_idx_acc = controlled_state_idx_sycl.get_access<sycl::access::mode::read_write>(h);
+        h.parallel_for(sycl::range<2>(1 << num_outer, 1 << num_target), [=](sycl::id<2> it) {
+            int idx = control_value_mask;
+            int outer_idx = 0, target_idx = 0;
             for(int i = 0; i < n; i++) {
-                if(control_mask >> i & 1) {
-                    iter_raw |= control_value[control_idx] << i;
-                    iter_col |= control_value[control_idx] << i;
-                    ++control_idx;
-                } else if(target_mask >> i & 1) {
-                    iter_raw |= (it[1] >> target_idx & 1) << i;
-                    iter_col |= (it[2] >> target_idx & 1) << i;
-                    ++target_idx;
-                } else {
-                    iter_raw |= (it[0] >> outer_idx & 1) << i;
-                    iter_col |= (it[0] >> outer_idx & 1) << i;
-                    ++outer_idx;
-                }
+                if(outer_mask >> i & 1) idx |= (it[0] >> outer_idx++ & 1) << i;
+                else if(target_mask >> i & 1) idx |= (it[1] >> target_idx++ & 1) << i;
             }
-            new_state_acc[iter_raw] += matrix[iter_raw][iter_col] * state_acc[iter_col];
+            controlled_state_idx_acc[it[0]][it[1]] = idx;
         });
-        h.parallel_for<class nstream>(sycl::range<1>(1 << n), [=](sycl::id<1> it) {
-            state_acc[it[0]] = new_state_acc[it[0]];
+
+        auto controlled_state_updated_acc = controlled_state_updated_sycl.get_access<sycl::access::mode::read_write>(h);
+        auto matrix_acc = matrix_sycl.get_access<sycl::access::mode::read>(h);
+        h.parallel_for(sycl::range<3>(1 << num_outer, 1 << num_target, 1 << num_target), [=](sycl::id<3> it) {
+            controlled_state_updated_acc[it[0]][it[1]] += matrix_acc[it[1]][it[2]] * state_acc[controlled_state_idx_acc[it[0]][it[2]]];
+        });
+
+        h.parallel_for(sycl::range<2>(1 << num_outer, 1 << num_target), [=](sycl::id<2> it) {
+            state_acc[controlled_state_idx_acc[it[0]][it[1]]] = controlled_state_updated_acc[it[0]][it[1]];
         });
     });
 }
@@ -198,15 +199,11 @@ int main(int argc, char** argv) {
     const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
     const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
     
-    sycl::queue q(sycl::gpu_selector_v);
+    sycl::queue q(sycl::default_selector_v);
 
-    std::vector<Complex> init_state(1 << n);
-    for(int i = 0; i < 1 << n; i++) init_state[i] = i;
-    auto state_sycl = sycl::buffer(init_state.data(), sycl::range(1 << n));
-
-    update_with_x(q, state_sycl, n, 1);
+    std::vector<Complex> init_state(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) init_state[i] = i;
+    auto state_sycl = sycl::buffer(init_state.data(), sycl::range<1>(1 << n_qubits));
 
     q.wait();
-    for(int i = 0; i < 1 << n; i++) std::cout << ' ' << init_state[i];
-    std::cout << std::endl;
 }
