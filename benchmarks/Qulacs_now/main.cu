@@ -11,8 +11,6 @@
 #include <cuda.h>
 #include <chrono>
 
-using namespace std;
-
 void test(int, int, vector<double>&);
 void dbg(vector<double>);
 
@@ -41,8 +39,20 @@ void test(int qubit_num, int repeat, vector<double>& time_list){
     for(int i=0;i<repeat;i++){
         QuantumStateGpu state(qubit_num);
         state.set_Haar_random_state();
-        auto gate = gate::X(0);
-        gate->update_quantum_state(&state);
+        auto gateX = gate::X(0);
+        auto gateH = gate::H(0);
+        auto gateCNOT = gate::CNOT(0,1);
+        auto gateRX = gate::RX(0,0.5);
+        auto gateRZ = gate::RZ(0,0.5);
+        auto gateRY = gate::RY(0,1);
+        auto gateMatrix = gate::DenseMatrix(0,utility::RandomMatrix(2,2));
+        gateX->update_quantum_state(&state);
+        gateH->update_quantum_state(&state);
+        gateCNOT->update_quantum_state(&state);
+        gateRX->update_quantum_state(&state);
+        gateRZ->update_quantum_state(&state);
+        gateRY->update_quantum_state(&state);
+        gateMatrix->update_quantum_state(&state);
     }
     // e_time = chrono::system_clock::now();
     cudaEventRecord(stop);
@@ -57,8 +67,8 @@ void test(int qubit_num, int repeat, vector<double>& time_list){
 
 void dbg(vector<double> time_list){
     for(int i=0;i<time_list.size();i++){
-        cout << scientific << setprecision(1) << time_list[i] << " ";
+        std::cout << scientific << setprecision(1) << time_list[i] << " ";
     }
-    cout << endl;
+    std::cout << std::endl;
 }
 
