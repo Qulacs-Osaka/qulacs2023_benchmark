@@ -1,4 +1,4 @@
-FROM nvidia-cuda:ubuntu22.04
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 RUN apt-get update -y && apt-get install wget gpg -y
 RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor > /usr/share/keyrings/oneapi-archive-keyring.gpg \
