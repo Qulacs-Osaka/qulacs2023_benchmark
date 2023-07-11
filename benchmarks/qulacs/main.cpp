@@ -5,7 +5,7 @@
 
 double measure() {
     const auto start = std::chrono::system_clock::now();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
     const auto end = std::chrono::system_clock::now();
     return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 }

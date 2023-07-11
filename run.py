@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from tqdm import tqdm
 import click
 import json
@@ -15,8 +16,9 @@ class BenchmarkResult:
     n_repeat: int
     durations: list[float]
 
-    def save(self, output_directory: str):
-        with open(f"{output_directory}/{self.target}.json", "w") as f:
+    def save(self, output_directory: Path):
+        data_file = output_directory / f"{self.target}.json"
+        with data_file.open(mode="w") as f:
             d = asdict(self)
             json.dump(d, f, indent=4)
 
@@ -58,7 +60,9 @@ class BenchmarkCase:
             if run_result.returncode != 0:
                 raise RuntimeError(f"Failed to run {self.target} image: {run_result.stderr}")
 
-            with open(f"./benchmarks/{self.target}/durations.txt", "r") as f:
+            # Extract the benchmark data from not stdout, but a file because stdout is made dirty by output of CUDA image.
+            durations_file = Path(f"./benchmarks/{self.target}/durations.txt")
+            with durations_file.open() as f:
                 mean = BenchmarkCase.calculate_mean(f.read())
                 means.append(mean)
         print("Finished benchmark")
@@ -80,7 +84,7 @@ def main(target: list[str], n_qubits_begin: int, n_qubits_end: int, n_repeat: in
     cases = [BenchmarkCase(t, n_qubits_begin, n_qubits_end, n_repeat) for t in target]
     results = [case.run_benchmark() for case in cases]
     for result in results:
-        result.save("output")
+        result.save(Path("output"))
 
 
 if __name__ == "__main__":
