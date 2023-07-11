@@ -18,23 +18,30 @@
 3. 各実装は，各量子ビット数に対して，指定された繰り返し回数だけ実行時間(ms 単位)を計測し，その平均値を出力する
 4. 出力された実行時間やその他の情報を json ファイルに保存する(古い計測結果は上書き)
 
-## ベンチマーク対象のプログラムの要件
+## ベンチマーク対象のプログラムのビルド/実行の要件
 - プログラムは，`./benchmarks/${LIBRARY_NAME}/`(OpenACC の場合 `./benchmarks/OpenACC/`)に配置する
-- ビルドは，依存ライブラリのビルドも含めて `./benchmarks/${LIBRARY_NAME}/build.sh` に記述する
+- 各ライブラリごとに Dockerfile を用意し，依存ライブラリのインストールなどを行う
+- ローカルの `./benchmarks/${LIBRARY_NAME}/` は，Docker コンテナの `/benchmarks/` にバインドマウントされる
+- ビルドは `./benchmarks/${LIBRARY_NAME}/build.sh` に記述する
 - 実行は，`./benchmarks/${LIBRARY_NAME}/main` によって行う
 
 ### 入力
-量子ビット数 `n` が標準入力として与えられます．
+量子ビット数 `n` と繰り返し回数 `r` がコマンドライン引数として与えられます．
+```
+n r
+```
 例:
-```bash
-15
+```
+15 5
 ```
 
 ### 出力
-各量子ビット数に対する実行時間の平均値(ms 単位)を，空白区切りで出力します．
+量子ビット数 `n` の量子回路を繰り返し回数 `r` 回だけ実行し，それぞれの実行時間(ms 単位)を空白区切りで `durations.txt` に出力します．
+CUDA のコンテナを利用すると標準出力にバージョンの情報などが出力されるため，ファイルに出力するようにしています．
+以下は繰り返し回数が5回の場合の出力例です．
 例:
-```bash
-2.5e-3 5.1e-3 1.1e-2 2.3e-2 4.7e-2 9.5e-2 1.9e-1 3.8e-1 7.6e-1 1.5 3.0 6.0
+```
+2.5e-3 2.4e-3 2.3e-3 2.4e-3 2.4e-3
 ```
 
 ### 実装例
@@ -42,14 +49,28 @@
 #include <iostream>
 
 int main() {
-    int n;
-    std::cin >> n;
-    std::cout << n << std::endl;
-
-    // ここに計測対象のプログラムを記述
-
-    for (auto result : results) {
-        std::cout << result << " ";
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+        return 1;
     }
+
+    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
+
+    /*
+    ここに計測対象のプログラムを記述
+    */
+
+    std::ofstream ofs("durations.txt");
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file" << std::endl;
+        return 1;
+    }
+
+    for (int i = 0; i < n_repeats; i++) {
+        ofs << measure() << " ";
+    }
+    ofs << std::endl;
+
     return 0;
 }

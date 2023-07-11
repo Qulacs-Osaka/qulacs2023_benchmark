@@ -130,3 +130,6 @@ dmypy.json
 
 .vscode/*
 !.vscode/tasks.json
+
+durations.txt
+main
