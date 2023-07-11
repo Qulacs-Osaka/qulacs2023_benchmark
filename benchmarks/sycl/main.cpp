@@ -163,16 +163,35 @@ void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sy
     }
     for(int idx : target_list) target_mask |= 1 << idx;
     int outer_mask = (~(1 << n) - 1) & ~control_mask & ~target_mask;
+    sycl::buffer<UINT, 1> control_list_sycl(control_list);
+    sycl::buffer<UINT, 1> control_value_sycl(control_value);
+    sycl::buffer<UINT, 1> target_list_sycl(target_list);
     sycl::buffer<int, 2> controlled_state_idx_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
     sycl::buffer<Complex, 2> controlled_state_updated_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
     q.submit([&](sycl::handler& h) {
+        auto control_list_acc = control_list_sycl.get_access<sycl::access::mode::read>(h);
+        auto control_value_acc = control_value_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_list_acc = target_list_sycl.get_access<sycl::access::mode::read>(h);
         auto controlled_state_idx_acc = controlled_state_idx_sycl.get_access<sycl::access::mode::write>(h);
         h.parallel_for(sycl::range<2>(1 << num_outer, 1 << num_target), [=](sycl::id<2> it) {
-            int idx = control_value_mask;
-            int outer_idx = 0, target_idx = 0;
-            for(int i = 0; i < n; i++) {
-                if(outer_mask >> i & 1) idx |= (it[0] >> outer_idx++ & 1) << i;
-                else if(target_mask >> i & 1) idx |= (it[1] >> target_idx++ & 1) << i;
+            int idx = it[0];
+            int control_idx = 0, target_idx = 0;
+            while(control_idx < num_control && target_idx < num_target) {
+                if(control_list_acc[control_idx] < target_list_acc[target_idx]) {
+                    UINT control = control_list_acc[control_idx];
+                    UINT value = control_value_acc[control_idx];
+                    control_idx++;
+                    int upper_mask = ((1 << (n - control)) - 1) << control;
+                    int lower_mask = (1 << control) - 1;
+                    idx = ((idx & upper_mask) << 1) | (value << control) | (idx & lower_mask);
+                } else {
+                    UINT target = target_list_acc[target_idx];
+                    UINT value = it[1] >> target_idx;
+                    target_idx++;
+                    int upper_mask = ((1 << (n - target)) - 1) << target;
+                    int lower_mask = (1 << target) - 1;
+                    idx = ((idx & upper_mask) << 1) | (value << target) | (idx & lower_mask);
+                }
             }
             controlled_state_idx_acc[it[0]][it[1]] = idx;
         });
