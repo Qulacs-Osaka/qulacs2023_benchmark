@@ -42,6 +42,7 @@ class BenchmarkCase:
             raise RuntimeError(f"Failed to build {self.target} image: {build_result.stderr}")
 
     def run_benchmark(self) -> BenchmarkResult:
+        print(f"=== {self.target} ===")
         self.build_image()
 
         current_directory = os.getcwd()
