@@ -41,7 +41,7 @@ class SingleQubitUpdaterRX {
     double sin_angle_2;
     
 public:
-    SingleQubitUpdaterRX(double angle) : angle{angle}, cos_angle_2{cos(angle) / 2}, sin_angle_2{sin(angle) / 2} {}
+    SingleQubitUpdaterRX(double angle) : angle{angle}, cos_angle_2{cos(angle / 2)}, sin_angle_2{sin(angle / 2)} {}
     
     void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
@@ -61,7 +61,7 @@ class SingleQubitUpdaterRY {
     double sin_angle_2;
     
 public:
-    SingleQubitUpdaterRY(double angle) : angle{angle}, cos_angle_2{cos(angle) / 2}, sin_angle_2{sin(angle) / 2} {}
+    SingleQubitUpdaterRY(double angle) : angle{angle}, cos_angle_2{cos(angle / 2)}, sin_angle_2{sin(angle / 2)} {}
     
     void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
@@ -81,7 +81,7 @@ class SingleQubitUpdaterRZ {
     double sin_angle_2;
     
 public:
-    SingleQubitUpdaterRZ(double angle) : angle{angle}, cos_angle_2{cos(angle) / 2}, sin_angle_2{sin(angle) / 2} {}
+    SingleQubitUpdaterRZ(double angle) : angle{angle}, cos_angle_2{cos(angle / 2)}, sin_angle_2{sin(angle / 2)} {}
     
     void operator()(Complex& a0, Complex& a1) const {
         Complex tmp = a0;
