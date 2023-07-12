@@ -98,20 +98,8 @@ public:
 
 template <class SingleQubitUpdater>
 void update_with_single_target_gate(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target, const SingleQubitUpdater& updater) {
-    q.submit([&](sycl::handler& h) {
-        auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
-        h.parallel_for(sycl::range<2>(1 << (n - target - 1), 1 << target), [=](sycl::id<2> it) {
-            int i = (it[0] << (target + 1)) | it[1];
-            int j = i | (1 << target);
-            updater(state_acc[i], state_acc[j]);
-        });
-    });
-}
-
-template <class SingleQubitUpdater>
-void update_with_single_target_gate_single_loop(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target, const SingleQubitUpdater& updater) {
+    int higher_mask = (1 << (n-1)) - (1 << target);
     int lower_mask = (1 << target) - 1;
-    int higher_mask = ~lower_mask;
     q.submit([&](sycl::handler& h) {
         auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
         h.parallel_for(sycl::range<1>(1 << (n - 1)), [=](sycl::id<1> it) {
@@ -124,21 +112,23 @@ void update_with_single_target_gate_single_loop(sycl::queue& q, sycl::buffer<Com
 
 template <class SingleQubitUpdater>
 void update_with_single_control_single_target_gate(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT control, UINT target, const SingleQubitUpdater& updater) {
+    int higher_mask = 0, middle_mask = 0, lower_mask;
+    if(target > control) {
+        higher_mask = (1 << (n-2)) - (1 << (target-1));
+        middle_mask = (1 << (target-1)) - (1 << control);
+        lower_mask = (1 << control) - 1;
+    } else {
+        higher_mask = (1 << (n-2)) - (1 << (control-1));
+        middle_mask = (1 << (control-1)) - (1 << target);
+        lower_mask = (1 << target) - 1;
+    }
     q.submit([&](sycl::handler& h) {
         auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
-        if(target > control) {
-            h.parallel_for(sycl::range<3>(1 << (n-target-1), 1 << (target-control-1), 1 << control), [=](sycl::id<3> it) {
-                int i = (it[0] << (target+1)) | (it[1] << (control+1)) | (1 << control) | it[2];
-                int j = i | (1 << target);
-                updater(state_acc[i], state_acc[j]);
-            });
-        } else {
-            h.parallel_for(sycl::range<3>(1 << (n-control-1), 1 << (control-target-1), 1 << target), [=](sycl::id<3> it) {
-                int i = (it[0] << (control+1)) | (1 << control) | (it[1] << (target+1)) | it[2];
-                int j = i | (1 << target);
-                updater(state_acc[i], state_acc[j]);
-            });
-        }
+        h.parallel_for(sycl::range<1>(1 << (n - 2)), [=](sycl::id<1> it) {
+            int i = ((it[0] & higher_mask) << 2) | ((it[0] & middle_mask) << 1) | (it[0] & lower_mask) | (1 << control);
+            int j = i | (1 << target);
+            updater(state_acc[i], state_acc[j]);
+        });
     });
 }
 
@@ -275,7 +265,7 @@ void update_with_dense_matrix_controlled(sycl::queue& q, sycl::buffer<Complex, 1
 }
 
 void x_test() {
-    int nqubits = 19;
+    int nqubits = 28;
     std::cout << "X gate\n";
     std::cout << "q = " << nqubits << "\n\n";
     
@@ -295,6 +285,7 @@ void x_test() {
 
                 update_with_x(q, state_sycl, nqubits, 3);
 
+                q.wait();
                 auto end_time = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
                 double duration_sec = duration.count() / 1e6;
@@ -316,6 +307,7 @@ void x_test() {
 
                 update_with_x_single_loop(q, state_sycl, nqubits, 3);
 
+                q.wait();
                 auto end_time = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
                 double duration_sec = duration.count() / 1e6;
