@@ -275,32 +275,56 @@ void update_with_dense_matrix_controlled(sycl::queue& q, sycl::buffer<Complex, 1
 }
 
 void x_test() {
-    int n = 28;
-    std::vector<double> results;
+    int nqubits = 19;
+    std::cout << "X gate\n";
+    std::cout << "q = " << nqubits << "\n\n";
     
-    for(UINT nqubits = 4; nqubits <= n; ++nqubits) {
-        auto start_time = std::chrono::high_resolution_clock::now();
-        sycl::queue q(sycl::gpu_selector_v);
+    for(UINT target = 4; target <= nqubits; target += 5) {
+        std::cout << "target = " << target << "\n";
 
-        std::vector<Complex> state(1 << nqubits);
-        auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
-        q.submit([&](sycl::handler& h) {
-            auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
-            h.parallel_for(sycl::range<1>(1 << nqubits), [=](sycl::id<1> it) {
-                state_acc[it[0]] = it[0];
-            });
-        });
+        {
+            std::cout << "double :\n";
+            std::vector<double> results;
+            for(int iter = 0; iter < 10; iter++) {
+                std::vector<Complex> state(1 << nqubits);
+                for(int i = 0; i < 1 << nqubits; i++) state[i] = i;
 
-        update_with_x_single_loop(q, state_sycl, nqubits, 3);
+                auto start_time = std::chrono::high_resolution_clock::now();
+                sycl::queue q(sycl::gpu_selector_v);
+                auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        double duration_sec = duration.count() / 1e6;
+                update_with_x(q, state_sycl, nqubits, 3);
 
-        results.push_back(duration_sec);
+                auto end_time = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+                double duration_sec = duration.count() / 1e6;
+                results.push_back(duration_sec);
+            }
+            for(auto x : results) std::cout << x << ' ';
+            std::cout << std::endl;
+        }
+        {
+            std::cout << "single :\n";
+            std::vector<double> results;
+            for(int iter = 0; iter < 10; iter++) {
+                std::vector<Complex> state(1 << nqubits);
+                for(int i = 0; i < 1 << nqubits; i++) state[i] = i;
+
+                auto start_time = std::chrono::high_resolution_clock::now();
+                sycl::queue q(sycl::gpu_selector_v);
+                auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
+
+                update_with_x_single_loop(q, state_sycl, nqubits, 3);
+
+                auto end_time = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+                double duration_sec = duration.count() / 1e6;
+                results.push_back(duration_sec);
+            }
+            for(auto x : results) std::cout << x << ' ';
+            std::cout << std::endl;
+        }
     }
-    for(auto x : results) std::cout << x << ' ';
-    std::cout << std::endl;
 }
 
 int main(int argc, char** argv) {
