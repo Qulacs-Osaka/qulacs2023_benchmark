@@ -153,16 +153,58 @@ void update_with_cnot(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT
     update_with_single_control_single_target_gate(q, state_sycl, n, control, target, SingleQubitUpdaterX{});
 }
 
-void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, sycl::buffer<Complex, 2>& matrix_sycl) {
+void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& target_list, sycl::buffer<Complex, 2>& matrix_sycl) {
+    int num_target = target_list.size(), num_outer = n - num_target;
+    int target_mask = 0;
+    for(int idx : target_list) target_mask |= 1 << idx;
+    sycl::buffer<UINT, 1> target_list_sycl(target_list);
+    sycl::buffer<int, 2> state_idx_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
+    sycl::buffer<Complex, 2> state_updated_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
+    q.submit([&](sycl::handler& h) {
+        auto target_list_acc = target_list_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_idx_acc = state_idx_sycl.get_access<sycl::access::mode::write>(h);
+        h.parallel_for(sycl::range<2>(1 << num_outer, 1 << num_target), [=](sycl::id<2> it) {
+            int idx = it[0];
+            int target_idx = 0;
+            while(target_idx < num_target) {
+                UINT target = target_list_acc[target_idx];
+                UINT value = it[1] >> target_idx;
+                target_idx++;
+                int upper_mask = ((1 << (n - target)) - 1) << target;
+                int lower_mask = (1 << target) - 1;
+                idx = ((idx & upper_mask) << 1) | (value << target) | (idx & lower_mask);
+            }
+            state_idx_acc[it[0]][it[1]] = idx;
+        });
+    });
+    q.submit([&](sycl::handler& h) {
+        auto state_acc = state_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_idx_acc = state_idx_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::write>(h);
+        auto matrix_acc = matrix_sycl.get_access<sycl::access::mode::read>(h);
+        h.parallel_for(sycl::range<3>(1 << num_outer, 1 << num_target, 1 << num_target), [=](sycl::id<3> it) {
+            state_updated_acc[it[0]][it[1]] += matrix_acc[it[1]][it[2]] * state_acc[state_idx_acc[it[0]][it[2]]];
+        });
+    });
+    q.submit([&](sycl::handler& h) {
+        auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
+        auto state_idx_acc = state_idx_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::read>(h);
+        h.parallel_for(sycl::range<2>(1 << num_outer, 1 << num_target), [=](sycl::id<2> it) {
+            state_acc[state_idx_acc[it[0]][it[1]]] = state_updated_acc[it[0]][it[1]];
+        });
+    });
+}
+
+void update_with_dense_matrix_controlled(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, sycl::buffer<Complex, 2>& matrix_sycl) {
     int num_control = control_list.size(), num_target = target_list.size(), num_outer = n - num_control - num_target;
+    if(num_control == 0) update_with_dense_matrix(q, state_sycl, n, target_list, matrix_sycl);
     int control_mask = 0, control_value_mask = 0, target_mask = 0;
-    for(int idx : control_list) control_mask |= 1 << idx;
     for(int i = 0; i < num_control; i++) {
         control_mask |= 1 << control_list[i];
         if(control_value[i]) control_value_mask |= 1 << control_list[i];
     }
     for(int idx : target_list) target_mask |= 1 << idx;
-    int outer_mask = (~(1 << n) - 1) & ~control_mask & ~target_mask;
     sycl::buffer<UINT, 1> control_list_sycl(control_list);
     sycl::buffer<UINT, 1> control_value_sycl(control_value);
     sycl::buffer<UINT, 1> target_list_sycl(target_list);
@@ -176,8 +218,8 @@ void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sy
         h.parallel_for(sycl::range<2>(1 << num_outer, 1 << num_target), [=](sycl::id<2> it) {
             int idx = it[0];
             int control_idx = 0, target_idx = 0;
-            while(control_idx < num_control && target_idx < num_target) {
-                if(control_list_acc[control_idx] < target_list_acc[target_idx]) {
+            while(control_idx < num_control || target_idx < num_target) {
+                if(target_idx == num_target || (control_idx < num_control && control_list_acc[control_idx] < target_list_acc[target_idx])) {
                     UINT control = control_list_acc[control_idx];
                     UINT value = control_value_acc[control_idx];
                     control_idx++;
@@ -247,7 +289,7 @@ int main(int argc, char** argv) {
                 std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
             }
             sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(2, 2));
-            update_with_dense_matrix(q, state_sycl, n_qubits, {}, {}, {7 % n_qubits}, matrix_sycl);
+            update_with_dense_matrix(q, state_sycl, n_qubits, {7 % n_qubits}, matrix_sycl);
         }
         {
             // SWAP Gate Apply
@@ -257,7 +299,7 @@ int main(int argc, char** argv) {
                 std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
             }
             sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(4, 4));
-            update_with_dense_matrix(q, state_sycl, n_qubits, {}, {}, {8 % n_qubits, 9 % n_qubits}, matrix_sycl);
+            update_with_dense_matrix(q, state_sycl, n_qubits, {8 % n_qubits, 9 % n_qubits}, matrix_sycl);
         }
         {
             // CRZ(PI/3) Gate Apply        
@@ -267,7 +309,7 @@ int main(int argc, char** argv) {
                 std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
             }
             sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(2, 2));
-            update_with_dense_matrix(q, state_sycl, n_qubits, {10 % n_qubits}, {1}, {11 % n_qubits}, matrix_sycl);
+            update_with_dense_matrix_controlled(q, state_sycl, n_qubits, {10 % n_qubits}, {1}, {11 % n_qubits}, matrix_sycl);
         }
         q.wait();
         
