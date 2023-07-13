@@ -13,10 +13,10 @@ RUN apt-get update \
     wget \
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-COPY ./build_by_docker.sh home/build_by_docker.sh
-COPY ./main.cu home/main.cu
-RUN chmod +x home/build_by_docker.sh
-RUN sh home/build_by_docker.sh
-RUN cd home
+COPY ./build_by_docker.sh /home/build_by_docker.sh
+COPY ./main.cu /home/main.cu
+RUN chmod +x /home/build_by_docker.sh
+RUN sh /home/build_by_docker.sh
+RUN cd /home
 
-CMD ["/bin/bash"]
+WORKDIR /home

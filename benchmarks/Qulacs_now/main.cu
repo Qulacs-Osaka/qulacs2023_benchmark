@@ -10,33 +10,41 @@
 #include <vector>
 #include <cuda.h>
 #include <chrono>
+#include <iomanip>
 
-void test(int, int, vector<double>&);
-void dbg(vector<double>);
+void test(int, int, std::vector<double>&);
 
 cudaEvent_t start, stop;
-// chrono::system_clock::time_point s_time, e_time;
 
-int main(){
-    int qubit_start = 4;
-    int qubit_end = 20;
-    int repeat = 100;
-    cin >> qubit_end >> repeat;
-    qubit_end = qubit_end >= qubit_start ? qubit_end : qubit_start;
-
-    vector<double> time_list;
-    for(int i=qubit_start;i<=qubit_end;i++){
-        test(i, repeat, time_list);
+int main(int argc, char** argv){
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+        return 1;
     }
-    dbg(time_list);
+    int qubit = atoi(argv[1]);
+    int repeat = atoi(argv[2]);
+
+    std::vector<double> time_list;
+    test(qubit, repeat, time_list);
+
+    std::ofstream ofs("duration.txt");
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file" << std::endl;
+        return 1;
+    }
+    for(int i=0;i<time_list.size();i++){
+        ofs << std::scientific << std::setprecision(10) << time_list[i] << ' ';
+    }
+    ofs << std::endl;
+
+    return 0;
 }
 
-void test(int qubit_num, int repeat, vector<double>& time_list){
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-    // s_time = chrono::system_clock::now();
+void test(int qubit_num, int repeat, std::vector<double>& time_list){
     for(int i=0;i<repeat;i++){
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start);
         QuantumStateGpu state(qubit_num);
         state.set_Haar_random_state();
         auto gateX = gate::X(0);
@@ -45,30 +53,21 @@ void test(int qubit_num, int repeat, vector<double>& time_list){
         auto gateRX = gate::RX(0,0.5);
         auto gateRZ = gate::RZ(0,0.5);
         auto gateRY = gate::RY(0,1);
-        auto gateMatrix = gate::DenseMatrix(0,utility::RandomMatrix(2,2));
+        // auto gateMatrix = gate::DenseMatrix(0,SparseComplexMatrix::random(2,2));
         gateX->update_quantum_state(&state);
         gateH->update_quantum_state(&state);
         gateCNOT->update_quantum_state(&state);
         gateRX->update_quantum_state(&state);
         gateRZ->update_quantum_state(&state);
         gateRY->update_quantum_state(&state);
-        gateMatrix->update_quantum_state(&state);
+        // gateMatrix->update_quantum_state(&state);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float time = 0;
+        cudaEventElapsedTime(&time, start, stop); // msで計測
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        time_list.push_back(time);
     }
-    // e_time = chrono::system_clock::now();
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float time = 0;
-    // time = chrono::duration_cast<chrono::microseconds>(e_time - s_time).count();
-    cudaEventElapsedTime(&time, start, stop); // msで計測
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-    time_list.push_back(time / repeat);
-}
-
-void dbg(vector<double> time_list){
-    for(int i=0;i<time_list.size();i++){
-        std::cout << scientific << setprecision(1) << time_list[i] << " ";
-    }
-    std::cout << std::endl;
 }
 

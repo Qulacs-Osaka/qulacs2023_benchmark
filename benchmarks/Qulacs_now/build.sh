@@ -4,7 +4,9 @@ cd $(dirname $0)
 
 apt-get update
 
-path=$(pwd)
 
-docker build -t qulacs_now .
-docker run --mount type=bind,source=$path,target=/home -it qulacs_now
+CONTAINER_NAME=qulacs_now_container
+IMAGE_NAME=qulacs_now_image
+
+docker build -t ${IMAGE_NAME} .
+docker run -it --name ${CONTAINER_NAME} --mount type=bind,source="$(pwd)",target=/home ${IMAGE_NAME}
