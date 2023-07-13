@@ -2,47 +2,37 @@
 #include <Kokkos_Core.hpp>
 #include <Kokkos_StdAlgorithms.hpp>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
-
-#ifdef KOKKOS_ENABLE_CUDA
-#include <thrust/complex.h>
-#endif
-
 
 using UINT = unsigned int;
 using ITYPE = unsigned long long;
-#ifdef KOKKOS_ENABLE_CUDA
-    using CTYPE = thrust::complex<double>;
-#else
-    using CTYPE = std::complex<double>;
-#endif
+using CTYPE = Kokkos::complex<double>;
 
-void update_with_x_double_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT target) {
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
+void update_with_x(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
         ITYPE j = i | (1ULL << target);
         Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[j]);
     });
-    Kokkos::fence();
 }
 
-void update_with_x_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT target) {
+void update_with_x_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
     const ITYPE low_mask = (1ULL << target) - 1;
     const ITYPE high_mask = ~low_mask;
-    Kokkos::parallel_for(1ULL << (n - 1), KOKKOS_LAMBDA(const ITYPE& it) {
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA(const ITYPE& it) {
         ITYPE low = it & low_mask;
         ITYPE high = (it & high_mask) << 1;      
         ITYPE i = low | high;
         ITYPE j = i | (1ULL << target);
         Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[j]);
     });
-    Kokkos::fence();
 }
 
-void update_with_h(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT target) {
+void update_with_h(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
     const double inv_sqrt_2 = 1. / sqrt(2.);
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
         ITYPE j = i | (1ULL << target);
@@ -51,12 +41,27 @@ void update_with_h(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT target) {
         state_kokkos[i] = inv_sqrt_2 * (temp_i + temp_j);
         state_kokkos[j] = inv_sqrt_2 * (temp_i - temp_j);
     });
-    Kokkos::fence();
 }
 
-void update_with_Rx(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UINT target) {
-    const double angle_half = angle / 2, sin_half = std::sin(angle_half), cos_half = std::cos(angle_half);
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
+void update_with_h_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
+    const double inv_sqrt_2 = 1. / sqrt(2.);
+    const ITYPE low_mask = (1ULL << target) - 1;
+    const ITYPE high_mask = ~low_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA(const ITYPE& it) {
+        ITYPE low = it & low_mask;
+        ITYPE high = (it & high_mask) << 1;      
+        ITYPE i = low | high;
+        ITYPE j = i | (1ULL << target);
+        CTYPE temp_i = state_kokkos[i];
+        CTYPE temp_j = state_kokkos[j];
+        state_kokkos[i] = inv_sqrt_2 * (temp_i + temp_j);
+        state_kokkos[j] = inv_sqrt_2 * (temp_i - temp_j);
+    });
+}
+
+void update_with_Rx(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
+    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
         ITYPE j = i | (1ULL << target);
@@ -65,12 +70,27 @@ void update_with_Rx(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UI
         state_kokkos[i] = cos_half * temp_i - CTYPE(0, 1) * sin_half * temp_j;
         state_kokkos[j] = cos_half * temp_j - CTYPE(0, 1) * sin_half * temp_i;
     });
-    Kokkos::fence();
 }
 
-void update_with_Ry(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UINT target) {
-    const double angle_half = angle / 2, sin_half = std::sin(angle_half), cos_half = std::cos(angle_half);
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
+void update_with_Rx_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
+    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
+    const ITYPE lower_mask = (1ULL << target) - 1;
+    const ITYPE upper_mask = ~lower_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA(const ITYPE& it) {
+        ITYPE low = it & lower_mask;
+        ITYPE high = (it & upper_mask) << 1;    
+        ITYPE i = low | high;
+        ITYPE j = i | (1ULL << target); 
+        CTYPE temp_i = state_kokkos[i];
+        CTYPE temp_j = state_kokkos[j];
+        state_kokkos[i] = cos_half * temp_i - CTYPE(0, 1) * sin_half * temp_j;
+        state_kokkos[j] = cos_half * temp_j - CTYPE(0, 1) * sin_half * temp_i;
+    });
+}
+
+void update_with_Ry(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
+    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
         ITYPE j = i | (1ULL << target);
@@ -79,59 +99,117 @@ void update_with_Ry(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UI
         state_kokkos[i] = cos_half * temp_i + sin_half * temp_j;
         state_kokkos[j] = cos_half * temp_j - sin_half * temp_i;
     });
-    Kokkos::fence();
 }
 
-void update_with_Rz(Kokkos::View<CTYPE*> &state_kokkos, UINT n, double angle, UINT target) {
+void update_with_Ry_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
+    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
+    const ITYPE low_mask = (1ULL << target) - 1;
+    const ITYPE high_mask = ~low_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA(const ITYPE& it) {
+        ITYPE low = it & low_mask;
+        ITYPE high = (it & high_mask) << 1;    
+        ITYPE i = low | high;
+        ITYPE j = i | (1ULL << target); 
+        CTYPE temp_i = state_kokkos[i];
+        CTYPE temp_j = state_kokkos[j];
+        state_kokkos[i] = cos_half * temp_i + sin_half * temp_j;
+        state_kokkos[j] = cos_half * temp_j - sin_half * temp_i;
+    });
+}
+
+void update_with_Rz(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
     const double angle_half = angle / 2;
-    const CTYPE phase0 = std::exp(std::complex<double>(0, -angle_half)), 
-                               phase1 = std::exp(std::complex<double>(0, angle_half));
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n - target - 1), 1ULL << target});
+    const CTYPE phase0 = Kokkos::exp(CTYPE(0, -angle_half)), 
+                phase1 = Kokkos::exp(CTYPE(0, angle_half));
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
         ITYPE j = i | (1ULL << target);
         state_kokkos[i] *= phase0;
         state_kokkos[j] *= phase1;
     });
-    Kokkos::fence();
 }
 
-void update_with_SWAP(Kokkos::View<CTYPE*> state_kokkos, UINT n, UINT target0, UINT target1) {
-    if (target0 > target1) Kokkos::Experimental::swap(target0, target1);
+void update_with_Rz_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
+    const double angle_half = angle / 2;
+    const CTYPE phase0 = Kokkos::exp(CTYPE(0, -angle_half)), 
+                phase1 = Kokkos::exp(CTYPE(0, angle_half));
+    const ITYPE low_mask = (1ULL << target) - 1;
+    const ITYPE high_mask = ~low_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA(const ITYPE& it) {
+        ITYPE low = it & low_mask;
+        ITYPE high = (it & high_mask) << 1;    
+        ITYPE i = low | high;
+        ITYPE j = i | (1ULL << target); 
+        state_kokkos[i] *= phase0;
+        state_kokkos[j] *= phase1;
+    });
+}
+
+void update_with_SWAP(Kokkos::View<CTYPE*> state_kokkos, UINT n_qubits, UINT target0, UINT target1) {
+    if (target0 > target1) std::swap(target0, target1);
     const ITYPE mask0 = 1ULL << target0;
     const ITYPE mask1 = 1ULL << target1;
-    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n - target1 - 1), 1ULL << (target1 - target0 - 1), 1ULL << target0});
+    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n_qubits - target1 - 1), 1ULL << (target1 - target0 - 1), 1ULL << target0});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE &upper_bit_it, const ITYPE &middle_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (target1 + 1)) | (middle_bit_it << (target0 + 1)) | lower_bit_it;
         Kokkos::Experimental::swap(state_kokkos[i | mask0], state_kokkos[i | mask1]);
     });
-    Kokkos::fence();
 }
 
-void update_with_CNOT(Kokkos::View<CTYPE*> &state_kokkos, UINT n, UINT control, UINT target) {
+void update_with_SWAP_single_loop(Kokkos::View<CTYPE*> state_kokkos, UINT n_qubits, UINT target0, UINT target1) {
+    if (target0 > target1) std::swap(target0, target1);
+    const ITYPE lower_mask = (1ULL << target0) - 1;
+    const ITYPE middle_mask = ((1ULL << (target1 - target0 - 1)) - 1) << target0;
+    const ITYPE upper_mask = ~(lower_mask | middle_mask);
+    Kokkos::parallel_for(1ULL << (n_qubits - 2), KOKKOS_LAMBDA(const ITYPE &it) {
+        ITYPE lower_idx = it & lower_mask;
+        ITYPE middle_idx = (it & middle_mask) << 1;
+        ITYPE upper_idx = (it & upper_mask) << 2;
+        ITYPE i = upper_idx | middle_idx | lower_idx;
+        Kokkos::Experimental::swap(state_kokkos[i | (1ULL << target0)],
+            state_kokkos[i | (1ULL << target1)]);
+    });
+}
+
+void update_with_CNOT(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT control, UINT target) {
     const ITYPE mask_control = 1ULL << control;
     const ITYPE mask_target = 1ULL << target;
-    ITYPE ub = std::max(target, control);
-    ITYPE lb = std::min(target, control);
-    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n - ub - 1), 1ULL << (ub - lb - 1), 1ULL << lb});
+    ITYPE ub = Kokkos::max(target, control);
+    ITYPE lb = Kokkos::min(target, control);
+    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n_qubits - ub - 1), 1ULL << (ub - lb - 1), 1ULL << lb});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE &upper_bit_it, const ITYPE &middle_bit_it, const ITYPE &lower_bit_it) {
         ITYPE i = (upper_bit_it << (ub + 1)) | (middle_bit_it << (lb + 1)) | lower_bit_it | mask_control;
         Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[i | mask_target]);
-    });
-    Kokkos::fence();
+    });    
 }
 
-void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n, const Kokkos::View<UINT*>& control_list, const Kokkos::View<UINT*>& control_value, const Kokkos::View<UINT*>& target_list, const Kokkos::View<CTYPE**>& matrix) {
-    Kokkos::View<CTYPE*> new_state_kokkos("new_state_kokkos", 1ULL << n);
+void update_with_CNOT_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT control, UINT target) {
+    ITYPE ub = Kokkos::max(target, control);
+    ITYPE lb = Kokkos::min(target, control);
+    const ITYPE lower_mask = (1ULL << lb) - 1;
+    const ITYPE middle_mask = ((1ULL << (ub - lb - 1)) - 1) << lb;
+    const ITYPE upper_mask = ~(lower_mask | middle_mask);
+    Kokkos::parallel_for(1ULL << (n_qubits - 2), KOKKOS_LAMBDA(const ITYPE &it) {
+        ITYPE lower_idx = it & lower_mask;
+        ITYPE middle_idx = (it & middle_mask) << 1;
+        ITYPE upper_idx = (it & upper_mask) << 2;
+        ITYPE i = upper_idx | middle_idx | lower_idx | (1ULL << control);
+        Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[i | (1ULL << target)]);
+    });
+}
+
+void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, const Kokkos::View<UINT*>& control_list, const Kokkos::View<UINT*>& control_value, const Kokkos::View<UINT*>& target_list, const Kokkos::View<CTYPE**>& matrix) {
+    Kokkos::View<CTYPE*> new_state_kokkos("new_state_kokkos", 1ULL << n_qubits);
     int num_control = control_list.size(), num_target = target_list.size();
     int control_mask = 0, target_mask = 0;
     for(int i = 0; i < (int)control_list.size(); ++i) control_mask |= 1 << control_list[i];
     for(int i = 0; i < (int)target_list.size(); ++i) target_mask |= 1 << target_list[i];
-    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n - num_control - num_target), 1ULL << num_target, 1ULL << num_target});
+    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {1ULL << (n_qubits - num_control - num_target), 1ULL << num_target, 1ULL << num_target});
     Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE &outer_bit_it, const ITYPE &target_bit_it1, const ITYPE &target_bit_it2) {
         ITYPE iter_raw = 0, iter_col = 0;
         int outer_idx = 0, control_idx = 0, target_idx = 0;
-        for(int i = 0; i < n; i++) {
+        for(int i = 0; i < n_qubits; i++) {
             if(control_mask >> i & 1) {
                 iter_raw |= control_value[control_idx] << i;
                 iter_col |= control_value[control_idx] << i;
@@ -148,35 +226,48 @@ void update_with_dense_matrix(Kokkos::View<CTYPE*> &state_kokkos, UINT n, const 
         }
         Kokkos::atomic_add(&new_state_kokkos(iter_raw), matrix(iter_raw, iter_col) * state_kokkos(iter_col));
     });
-    Kokkos::fence();
-    Kokkos::deep_copy(state_kokkos, new_state_kokkos);
+    Kokkos::Experimental::move(Kokkos::Cuda(), state_kokkos, new_state_kokkos);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 Kokkos::initialize();
 {    
-    int n = 28;
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+        Kokkos::finalize();
+        return 1;
+    }
+    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
+
     std::vector<double> results;  // change to double to store seconds
 
-    for (int qubit = 4; qubit <= n; ++qubit) {
+    for (int i = 0; i < n_repeats; ++i) {
         auto start_time = std::chrono::high_resolution_clock::now();
 
-        Kokkos::View<CTYPE*> init_state("init_state", 1ULL << qubit);
-        Kokkos::parallel_for(1ULL << qubit, KOKKOS_LAMBDA(int i) {
+        Kokkos::View<CTYPE*> init_state("init_state", 1ULL << n_qubits);
+        Kokkos::parallel_for(1ULL << n_qubits, KOKKOS_LAMBDA(int i) {
             init_state(i) = CTYPE(i, 0);
         });
 
-        Kokkos::View<CTYPE*> state(init_state);
-
-        update_with_x_single_loop(state, qubit, 3);
+        update_with_CNOT_single_loop(init_state, n_qubits, n_qubits / 3, n_qubits * 2 / 3);
+        Kokkos::fence();
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        double duration_sec = duration.count() / 1e6;
-
-        results.push_back(duration_sec);
+        results.push_back(duration.count() / 1e6);         
     }
-    for(auto x : results) std::cout << x << ' ';
+
+    std::ofstream ofs("durations.txt");
+    if (!ofs.is_open()) {
+        std::cerr << "Failed to open file" << std::endl;
+        Kokkos::finalize();
+        return 1;
+    }
+
+    for (int i = 0; i < n_repeats; i++) {
+        std::cout << results[i] << " ";
+    }
     std::cout << std::endl;
 
 }
