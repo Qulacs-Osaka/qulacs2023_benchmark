@@ -17,6 +17,5 @@ COPY ./build_by_docker.sh /home/build_by_docker.sh
 COPY ./main.cu /home/main.cu
 RUN chmod +x /home/build_by_docker.sh
 RUN sh /home/build_by_docker.sh
-RUN cd /home
 
 WORKDIR /home
