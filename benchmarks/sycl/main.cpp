@@ -2,6 +2,7 @@
 #include <cmath>
 #include <complex>
 #include <iostream>
+#include <random>
 
 using UINT = uint64_t;
 using Complex = std::complex<double>;
@@ -96,6 +97,32 @@ public:
     }
 };
 
+void update_with_x_shuffle(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
+    int higher_mask = (1 << (n-1)) - (1 << target);
+    int lower_mask = (1 << target) - 1;
+    q.submit([&](sycl::handler& h) {
+        auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
+        h.parallel_for(sycl::range<1>(1 << n), [=](sycl::id<1> it) {
+            int i = it[0];
+            int j = it[0] ^ (1 << target);
+            Complex tmp_i = state_acc[i];
+/**
+#ifdef __CUDA_ARCH__
+            Complex tmp_j(
+                __shfl_xor_xync(0xffffffff, tmp_i.real(), 1 << target),
+                __shfl_xor_xync(0xffffffff, tmp_i.imag(), 1 << target)
+            );
+#else
+*/
+            Complex tmp_j = state_acc[j];
+            /*
+#endif
+*/
+            state_acc[i] = tmp_j;
+        });
+    });
+}
+
 template <class SingleQubitUpdater>
 void update_with_single_target_gate(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target, const SingleQubitUpdater& updater) {
     int higher_mask = (1 << (n-1)) - (1 << target);
@@ -103,7 +130,7 @@ void update_with_single_target_gate(sycl::queue& q, sycl::buffer<Complex, 1>& st
     q.submit([&](sycl::handler& h) {
         auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
         h.parallel_for(sycl::range<1>(1 << (n - 1)), [=](sycl::id<1> it) {
-            int i = ((it[0] & higher_mask) << 1) | (it[1] & lower_mask);
+            int i = ((it[0] & higher_mask) << 1) | (it[0] & lower_mask);
             int j = i | (1 << target);
             updater(state_acc[i], state_acc[j]);
         });
@@ -133,10 +160,8 @@ void update_with_single_control_single_target_gate(sycl::queue& q, sycl::buffer<
 }
 
 void update_with_x(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
+    //if(target < 5) update_with_x_shuffle(q, state_sycl, n, target);
     update_with_single_target_gate(q, state_sycl, n, target, SingleQubitUpdaterX{});
-}
-void update_with_x_single_loop(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
-    update_with_single_target_gate_single_loop(q, state_sycl, n, target, SingleQubitUpdaterX{});
 }
 void update_with_y(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
     update_with_single_target_gate(q, state_sycl, n, target, SingleQubitUpdaterY{});
@@ -265,58 +290,32 @@ void update_with_dense_matrix_controlled(sycl::queue& q, sycl::buffer<Complex, 1
 }
 
 void x_test() {
-    int nqubits = 28;
-    std::cout << "X gate\n";
-    std::cout << "q = " << nqubits << "\n\n";
-    
-    for(UINT target = 4; target <= nqubits; target += 5) {
-        std::cout << "target = " << target << "\n";
+    int n = 28;
+    std::vector<double> results;
 
-        {
-            std::cout << "double :\n";
-            std::vector<double> results;
-            for(int iter = 0; iter < 10; iter++) {
-                std::vector<Complex> state(1 << nqubits);
-                for(int i = 0; i < 1 << nqubits; i++) state[i] = i;
+    for(UINT nqubits = 4; nqubits <= n; ++nqubits) {
+        auto start_time = std::chrono::high_resolution_clock::now();
+        sycl::queue q(sycl::gpu_selector_v);
 
-                auto start_time = std::chrono::high_resolution_clock::now();
-                sycl::queue q(sycl::gpu_selector_v);
-                auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
+        std::vector<Complex> state(1 << nqubits);
+        auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
+        q.submit([&](sycl::handler& h) {
+            auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
+            h.parallel_for(sycl::range<1>(1 << nqubits), [=](sycl::id<1> it) {
+                state_acc[it[0]] = it[0];
+            });
+        });
 
-                update_with_x(q, state_sycl, nqubits, 3);
+        update_with_x(q, state_sycl, nqubits, 3);
 
-                q.wait();
-                auto end_time = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-                double duration_sec = duration.count() / 1e6;
-                results.push_back(duration_sec);
-            }
-            for(auto x : results) std::cout << x << ' ';
-            std::cout << std::endl;
-        }
-        {
-            std::cout << "single :\n";
-            std::vector<double> results;
-            for(int iter = 0; iter < 10; iter++) {
-                std::vector<Complex> state(1 << nqubits);
-                for(int i = 0; i < 1 << nqubits; i++) state[i] = i;
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        double duration_sec = duration.count() / 1e6;
 
-                auto start_time = std::chrono::high_resolution_clock::now();
-                sycl::queue q(sycl::gpu_selector_v);
-                auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
-
-                update_with_x_single_loop(q, state_sycl, nqubits, 3);
-
-                q.wait();
-                auto end_time = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-                double duration_sec = duration.count() / 1e6;
-                results.push_back(duration_sec);
-            }
-            for(auto x : results) std::cout << x << ' ';
-            std::cout << std::endl;
-        }
+        results.push_back(duration_sec);
     }
+    for(auto x : results) std::cout << x << ' ';
+    std::cout << std::endl;
 }
 
 int main(int argc, char** argv) {
