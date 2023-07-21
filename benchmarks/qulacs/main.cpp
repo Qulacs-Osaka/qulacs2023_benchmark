@@ -11,13 +11,14 @@ double measure() {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "Usage: " << argv[0] << " <circuit_id> <n_qubits> <n_repeats>" << std::endl;
         return 1;
     }
 
-    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
-    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
+    const auto circuit_id = std::strtoul(argv[1], nullptr, 10);
+    const auto n_qubits = std::strtoul(argv[2], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[3], nullptr, 10);
 
     std::ofstream ofs("durations.txt");
     if (!ofs.is_open()) {

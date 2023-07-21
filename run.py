@@ -11,13 +11,14 @@ import subprocess
 @dataclass
 class BenchmarkResult:
     target: str
+    circuit_id: int
     n_qubits_begin: int
     n_qubits_end: int
     n_repeat: int
     durations: list[float]
 
     def save(self, output_directory: Path):
-        data_file = output_directory / f"{self.target}.json"
+        data_file = output_directory / f"{self.target}_{self.circuit_id}.json"
         with data_file.open(mode="w") as f:
             d = asdict(self)
             json.dump(d, f, indent=4)
@@ -28,6 +29,7 @@ class BenchmarkCase:
     # Directory at which benchmark code is located.
     # For example, if you test ./benchmarks/qulacs, then directory is "qulacs".
     target: str
+    circuit_id: int
     n_qubits_begin: int
     n_qubits_end: int
     n_repeat: int
@@ -54,10 +56,10 @@ class BenchmarkCase:
         if build_result.returncode != 0:
             raise RuntimeError(f"Failed to build a program in {self.target}.")
 
-        print("Running benchmark")
+        print(f"Running benchmark for {self.target}, circuit {self.circuit_id}")
         means = []
         for n_qubits in tqdm(range(self.n_qubits_begin, self.n_qubits_end)):
-            run_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
+            run_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{self.circuit_id}", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
             if run_result.returncode != 0:
                 raise RuntimeError(f"Failed to run {self.target} image: {run_result.stderr}")
 
@@ -68,7 +70,7 @@ class BenchmarkCase:
                 means.append(mean)
         print("Finished benchmark")
 
-        return BenchmarkResult(self.target, self.n_qubits_begin, self.n_qubits_end, self.n_repeat, means)
+        return BenchmarkResult(self.target, self.circuit_id, self.n_qubits_begin, self.n_qubits_end, self.n_repeat, means)
 
     def calculate_mean(output: str) -> float:
         """Calculate mean of time from output of subprocess.run()"""
@@ -78,11 +80,12 @@ class BenchmarkCase:
 
 @click.command
 @click.option("--target", "-t", default=["qulacs"], multiple=True, help="Benchmark target. Specify directory name of benchmark code")
-@click.option("--n_qubits_begin", "-b", default=2, type=int, help="Number of qubits to start benchmark")
-@click.option("--n_qubits_end", "-e", default=26, type=int, help="Number of qubits to end benchmark, exclusive")
-@click.option("--n_repeat", "-r", default=10, type=int, help="Number of times to repeat benchmark")
-def main(target: list[str], n_qubits_begin: int, n_qubits_end: int, n_repeat: int):
-    cases = [BenchmarkCase(t, n_qubits_begin, n_qubits_end, n_repeat) for t in target]
+@click.option("--circuits", "-c", default=[0, 1, 2, 3, 4, 5], multiple=True, help="Circuit type. Specify circuit ID defined in README.md")
+@click.option("--n-qubits-begin", "-b", default=2, type=int, help="Number of qubits to start benchmark")
+@click.option("--n-qubits-end", "-e", default=26, type=int, help="Number of qubits to end benchmark, exclusive")
+@click.option("--n-repeat", "-r", default=10, type=int, help="Number of times to repeat benchmark")
+def main(target: list[str], circuits: list[int], n_qubits_begin: int, n_qubits_end: int, n_repeat: int):
+    cases = [BenchmarkCase(t, c, n_qubits_begin, n_qubits_end, n_repeat) for t in target for c in circuits]
     results = [case.run_benchmark() for case in cases]
     for result in results:
         result.save(Path("output"))
