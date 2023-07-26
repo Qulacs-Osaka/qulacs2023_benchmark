@@ -1,4 +1,5 @@
 #include <sycl/sycl.hpp>
+
 #include <cmath>
 #include <complex>
 #include <iostream>
@@ -97,32 +98,6 @@ public:
     }
 };
 
-void update_with_x_shuffle(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
-    int higher_mask = (1 << (n-1)) - (1 << target);
-    int lower_mask = (1 << target) - 1;
-    q.submit([&](sycl::handler& h) {
-        auto state_acc = state_sycl.get_access<sycl::access::mode::read_write>(h);
-        h.parallel_for(sycl::range<1>(1 << n), [=](sycl::id<1> it) {
-            int i = it[0];
-            int j = it[0] ^ (1 << target);
-            Complex tmp_i = state_acc[i];
-/**
-#ifdef __CUDA_ARCH__
-            Complex tmp_j(
-                __shfl_xor_xync(0xffffffff, tmp_i.real(), 1 << target),
-                __shfl_xor_xync(0xffffffff, tmp_i.imag(), 1 << target)
-            );
-#else
-*/
-            Complex tmp_j = state_acc[j];
-            /*
-#endif
-*/
-            state_acc[i] = tmp_j;
-        });
-    });
-}
-
 template <class SingleQubitUpdater>
 void update_with_single_target_gate(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target, const SingleQubitUpdater& updater) {
     int higher_mask = (1 << (n-1)) - (1 << target);
@@ -160,7 +135,6 @@ void update_with_single_control_single_target_gate(sycl::queue& q, sycl::buffer<
 }
 
 void update_with_x(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
-    //if(target < 5) update_with_x_shuffle(q, state_sycl, n, target);
     update_with_single_target_gate(q, state_sycl, n, target, SingleQubitUpdaterX{});
 }
 void update_with_y(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, UINT target) {
@@ -289,108 +263,261 @@ void update_with_dense_matrix_controlled(sycl::queue& q, sycl::buffer<Complex, 1
     });
 }
 
-void x_test() {
-    int n = 28;
-    std::vector<double> results;
+double single_qubit_bench(UINT n_qubits) {
+    std::mt19937 mt(std::random_device{}());
+    std::normal_distribution<> normal(0., 1.);
 
-    for(UINT nqubits = 4; nqubits <= n; ++nqubits) {
-        auto start_time = std::chrono::high_resolution_clock::now();
-        sycl::queue q(sycl::gpu_selector_v);
-
-        std::vector<Complex> state(1 << nqubits);
-        auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << nqubits));
-        q.submit([&](sycl::handler& h) {
-            auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
-            h.parallel_for(sycl::range<1>(1 << nqubits), [=](sycl::id<1> it) {
-                state_acc[it[0]] = it[0];
-            });
-        });
-
-        update_with_x(q, state_sycl, nqubits, 3);
-
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        double duration_sec = duration.count() / 1e6;
-
-        results.push_back(duration_sec);
+    std::vector<Complex> state_original(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) {
+        state_original[i] = {normal(mt), normal(mt)};
     }
-    for(auto x : results) std::cout << x << ' ';
-    std::cout << std::endl;
+    std::vector<Complex> state_test(state_original.begin(), state_original.end());
+    
+    std::vector<UINT> gate(10);
+    std::vector<UINT> target(10);
+    for(UINT i = 0; i < 10; i++) {
+        gate[i] = mt() % 4;
+        target[i] = mt() % n_qubits;
+    }
+
+    sycl::queue q(sycl::gpu_selector_v);
+    auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
+    auto st_time =std::chrono::system_clock::now();
+    for(UINT i = 0; i < 10; i++) {
+        switch(gate[i]) {
+            case 0:
+            update_with_x(q, state_sycl, n_qubits, target[i]);
+            break;
+            case 1:
+            update_with_y(q, state_sycl, n_qubits, target[i]);
+            break;
+            case 2:
+            update_with_z(q, state_sycl, n_qubits, target[i]);
+            break;
+            case 3:
+            update_with_h(q, state_sycl, n_qubits, target[i]);
+            break;
+        }
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+}
+
+double single_qubit_rotation_bench(UINT n_qubits) {
+    std::mt19937 mt(std::random_device{}());
+    std::normal_distribution<> normal(0., 1.);
+    std::uniform_int_distribution<> gate_gen(0, 2);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
+    std::uniform_real_distribution<> angle_gen(0., M_PI * 2);
+
+    std::vector<Complex> state_original(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) {
+        state_original[i] = {normal(mt), normal(mt)};
+    }
+    std::vector<Complex> state_test(state_original.begin(), state_original.end());
+    
+    std::vector<UINT> gate(10);
+    std::vector<UINT> target(10);
+    std::vector<double> angle(10);
+    for(UINT i = 0; i < 10; i++) {
+        gate[i] = gate_gen(mt);
+        target[i] = target_gen(mt);
+        angle[i] = angle_gen(mt);
+    }
+
+    sycl::queue q(sycl::gpu_selector_v);
+    auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
+    auto st_time =std::chrono::system_clock::now();
+    for(UINT i = 0; i < 10; i++) {
+        switch(gate[i]) {
+            case 0:
+            update_with_rx(q, state_sycl, n_qubits, target[i], angle[i]);
+            break;
+            case 1:
+            update_with_ry(q, state_sycl, n_qubits, target[i], angle[i]);
+            break;
+            case 2:
+            update_with_rz(q, state_sycl, n_qubits, target[i], angle[i]);
+            break;
+        }
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+}
+
+double cnot_bench(UINT n_qubits) {
+    std::mt19937 mt(std::random_device{}());
+    std::normal_distribution<> normal(0., 1.);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
+    std::uniform_real_distribution<> target_gen_1(0., n_qubits - 2);
+
+    std::vector<Complex> state_original(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) {
+        state_original[i] = {normal(mt), normal(mt)};
+    }
+    std::vector<Complex> state_test(state_original.begin(), state_original.end());
+    
+    std::vector<UINT> target(10);
+    std::vector<UINT> control(10);
+    for(UINT i = 0; i < 10; i++) {
+        target[i] = target_gen(mt);
+        control[i] = target_gen_1(mt); if(target[i] == control[i]) control[i] = n_qubits - 1;
+    }
+
+    sycl::queue q(sycl::gpu_selector_v);
+    auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
+    auto st_time =std::chrono::system_clock::now();
+    for(UINT i = 0; i < 10; i++) {
+        update_with_cnot(q, state_sycl, n_qubits, control[i], target[i]);
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+}
+
+double single_target_matrix_bench(UINT n_qubits) {
+    std::mt19937 mt(std::random_device{}());
+    std::normal_distribution<> normal(0., 1.);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
+
+    std::vector<Complex> state_original(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) {
+        state_original[i] = {normal(mt), normal(mt)};
+    }
+    std::vector<Complex> state_test(state_original.begin(), state_original.end());
+    
+    std::vector<UINT> target(10);
+    std::vector<std::vector<Complex>> matrix(10, std::vector<Complex>(4));
+    for(UINT i = 0; i < 10; i++) {
+        target[i] = target_gen(mt);
+        for(int j = 0; j < 4; j++) matrix[i][j] = {normal(mt), normal(mt)};
+    }
+
+    sycl::queue q(sycl::gpu_selector_v);
+    auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
+    auto st_time =std::chrono::system_clock::now();
+    for(UINT i = 0; i < 10; i++) {
+        auto matrix_sycl = sycl::buffer(matrix[i].data(), sycl::range<2>(2, 2));
+        update_with_dense_matrix(q, state_sycl, n_qubits, {target[i]}, matrix_sycl);
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+}
+
+double double_target_matrix_bench(UINT n_qubits) {
+    std::mt19937 mt(std::random_device{}());
+    std::normal_distribution<> normal(0., 1.);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
+    std::uniform_int_distribution<> target_gen_1(0, n_qubits - 2);
+
+    std::vector<Complex> state_original(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) {
+        state_original[i] = {normal(mt), normal(mt)};
+    }
+    std::vector<Complex> state_test(state_original.begin(), state_original.end());
+    
+    std::vector<std::vector<UINT>> target_list(10, std::vector<UINT>(2));
+    std::vector<std::vector<Complex>> matrix(10, std::vector<Complex>(16));
+    for(UINT i = 0; i < 10; i++) {
+        target_list[i][0] = target_gen(mt);
+        target_list[i][1] = target_gen_1(mt); if(target_list[i][0] == target_list[i][1]) target_list[i][1] = n_qubits - 1;
+        for(int j = 0; j < 16; j++) matrix[i][j] = {normal(mt), normal(mt)};
+    }
+
+    sycl::queue q(sycl::gpu_selector_v);
+    auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
+    auto st_time =std::chrono::system_clock::now();
+    for(UINT i = 0; i < 10; i++) {
+        auto matrix_sycl = sycl::buffer(matrix[i].data(), sycl::range<2>(4, 4));
+        update_with_dense_matrix(q, state_sycl, n_qubits, target_list[i], matrix_sycl);
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+}
+
+double double_control_matrix_bench(UINT n_qubits) {
+    std::mt19937 mt(std::random_device{}());
+    std::normal_distribution<> normal(0., 1.);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
+    std::uniform_int_distribution<> target_gen_1(0, n_qubits - 2);
+    std::uniform_int_distribution<> target_gen_2(0, n_qubits - 3);
+    std::uniform_int_distribution<> binary_gen(0, 1);
+
+    std::vector<Complex> state_original(1 << n_qubits);
+    for(int i = 0; i < 1 << n_qubits; i++) {
+        state_original[i] = {normal(mt), normal(mt)};
+    }
+    std::vector<Complex> state_test(state_original.begin(), state_original.end());
+    
+    std::vector<UINT> target(10);
+    std::vector<std::vector<UINT>> control_list(10, std::vector<UINT>(2));
+    std::vector<std::vector<UINT>> control_value(10, std::vector<UINT>(2));
+    std::vector<std::vector<Complex>> matrix(10, std::vector<Complex>(4));
+    for(UINT i = 0; i < 10; i++) {
+        target[i] = target_gen(mt);
+        control_list[i][0] = target_gen_1(mt); if(target[i] == control_list[i][0]) control_list[i][0] = n_qubits - 1;
+        control_list[i][1] = target_gen_2(mt);
+        if(target[i] == control_list[i][1]) control_list[i][1] = n_qubits - 2;
+        if(control_list[i][0] == control_list[i][1]) control_list[i][1] = n_qubits - 1;
+        for(int j = 0; j < 2; j++) control_value[i][j] = binary_gen(mt);
+        for(int j = 0; j < 4; j++) matrix[i][j] = {normal(mt), normal(mt)};
+    }
+
+    sycl::queue q(sycl::gpu_selector_v);
+    auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
+    auto st_time =std::chrono::system_clock::now();
+    for(UINT i = 0; i < 10; i++) {
+        auto matrix_sycl = sycl::buffer(matrix[i].data(), sycl::range<2>(4, 4));
+        update_with_dense_matrix_controlled(q, state_sycl, n_qubits, control_list[i], control_value[i], {target[i]}, matrix_sycl);
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
 }
 
 int main(int argc, char** argv) {
-    x_test();
-    /**
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "Usage: " << argv[0] << " <circuit_id> <n_qubits> <n_repeats>" << std::endl;
         return 1;
     }
 
-    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
-    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
-    
+    const auto circuit_id = std::strtoul(argv[1], nullptr, 10);
+    const auto n_qubits = std::strtoul(argv[2], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[3], nullptr, 10);
 
-    std::vector<unsigned long long> execution_time(n_repeats);
-    for(int repeat_itr = 0; repeat_itr < n_repeats; repeat_itr++) {
-        auto st_time =std::chrono::system_clock::now();
-
-        sycl::queue q(sycl::gpu_selector_v);
-        std::vector<Complex> state(1 << n_qubits);
-        for(int i = 0; i < 1 << n_qubits; i++) state[i] = i;
-        auto state_sycl = sycl::buffer(state.data(), sycl::range<1>(1 << n_qubits));
-        update_with_x(q, state_sycl, n_qubits, 0 % n_qubits);
-        update_with_h(q, state_sycl, n_qubits, 1 % n_qubits);
-        update_with_rx(q, state_sycl, n_qubits, 2 % n_qubits, M_PI / 4);
-        update_with_ry(q, state_sycl, n_qubits, 3 % n_qubits, -M_PI * 5 / 6);
-        update_with_rz(q, state_sycl, n_qubits, 4 % n_qubits, M_PI * 2 / 3);
-        update_with_cnot(q, state_sycl, n_qubits, 5 % n_qubits, 6 % n_qubits);
-        {
-            // sqrtX Gate Apply
-            std::vector<std::vector<Complex>> matrix = {{.5+.5j, .5-.5j}, {.5-.5j, .5+.5j}};
-            std::vector<Complex> matrix_1;
-            for(auto& row_elements : matrix) {
-                std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
-            }
-            sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(2, 2));
-            update_with_dense_matrix(q, state_sycl, n_qubits, {7 % n_qubits}, matrix_sycl);
-        }
-        {
-            // SWAP Gate Apply
-            std::vector<std::vector<Complex>> matrix = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}, {0, 0, 1, 0}};
-            std::vector<Complex> matrix_1;
-            for(auto& row_elements : matrix) {
-                std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
-            }
-            sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(4, 4));
-            update_with_dense_matrix(q, state_sycl, n_qubits, {8 % n_qubits, 9 % n_qubits}, matrix_sycl);
-        }
-        {
-            // CRZ(PI/3) Gate Apply        
-            std::vector<std::vector<Complex>> matrix = {{std::polar(1., -M_PI/6), 0}, {0, std::polar(1., M_PI/6)}};
-            std::vector<Complex> matrix_1;
-            for(auto& row_elements : matrix) {
-                std::copy(row_elements.begin(), row_elements.end(), std::back_inserter(matrix_1));
-            }
-            sycl::buffer<Complex, 2> matrix_sycl(matrix_1.data(), sycl::range<2>(2, 2));
-            update_with_dense_matrix_controlled(q, state_sycl, n_qubits, {10 % n_qubits}, {1}, {11 % n_qubits}, matrix_sycl);
-        }
-        q.wait();
-        
-        auto ed_time = std::chrono::system_clock::now();
-        execution_time[repeat_itr] = std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
-    }
-    
     std::ofstream ofs("durations.txt");
     if (!ofs.is_open()) {
         std::cerr << "Failed to open file" << std::endl;
         return 1;
     }
-
     for (int i = 0; i < n_repeats; i++) {
-        ofs << execution_time[i] << " ";
+        double t;
+        switch(circuit_id) {
+            case 0:
+            t = single_qubit_bench(n_qubits);
+            break;
+            case 1:
+            t = single_qubit_rotation_bench(n_qubits);
+            break;
+            case 2:
+            t = cnot_bench(n_qubits);
+            break;
+            case 3:
+            t = single_target_matrix_bench(n_qubits);
+            break;
+            case 4:
+            t = double_target_matrix_bench(n_qubits);
+            break;
+            case 5:
+            t = double_control_matrix_bench(n_qubits);
+            break;
+        }
+        ofs << t << " ";
     }
     ofs << std::endl;
-
     return 0;
-    */
 }
