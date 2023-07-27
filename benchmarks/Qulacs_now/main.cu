@@ -17,8 +17,8 @@ void test(int, int, std::vector<double>&);
 cudaEvent_t start, stop;
 
 int main(int argc, char** argv){
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
+    if (argc < 4) {
+        std::cerr << "Usage: " << argv[0] << "<circuit_number> <n_qubits> <n_repeats>" << std::endl;
         return 1;
     }
     int qubit = atoi(argv[1]);
