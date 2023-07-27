@@ -3,12 +3,13 @@ import json
 import matplotlib.pyplot as plt
 
 
-def plot_n_qubits(targets: list[str], data_directory: Path, figure_directory: Path) -> None:
+# For each circuit, plot n_qubits and the duration of execution time for all targets.
+def plot_n_qubits(targets: list[str], circuit_id: int, data_directory: Path, figure_directory: Path) -> None:
     fig = plt.figure()
     ax = fig.add_subplot()
 
     for target in targets:
-        data_file = data_directory / f"{target}.json"
+        data_file = data_directory / f"{target}_{circuit_id}.json"
         with data_file.open() as f:
             data = json.load(f)
             n_qubits_begin = data["n_qubits_begin"]
@@ -23,7 +24,7 @@ def plot_n_qubits(targets: list[str], data_directory: Path, figure_directory: Pa
     ax.legend()
     fig.gca().set_yscale("log")
     fig.gca().grid(linestyle="--")
-    fig.savefig(f"{figure_directory}/n_qubits.png")
+    fig.savefig(f"{figure_directory}/n_qubits_{circuit_id}.png")
 
 
 def main() -> None:
@@ -31,7 +32,8 @@ def main() -> None:
     figure_directory = Path("figures")
     figure_directory.mkdir(exist_ok=True)
 
-    plot_n_qubits(targets, Path("output"), figure_directory)
+    for circuit_id in range(6):
+        plot_n_qubits(targets, circuit_id, Path("output"), figure_directory)
 
 
 if __name__ == "__main__":
