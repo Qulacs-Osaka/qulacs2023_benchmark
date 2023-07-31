@@ -1,13 +1,16 @@
 #include <complex>
 #include <Kokkos_Core.hpp>
+#include <Kokkos_Random.hpp>
 #include <Kokkos_StdAlgorithms.hpp>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <random>
 
 using UINT = unsigned int;
 using ITYPE = unsigned long long;
 using CTYPE = Kokkos::complex<double>;
+using TeamHandle = Kokkos::TeamPolicy<>::member_type;
 
 void update_with_x(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
     Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
@@ -70,6 +73,55 @@ void update_with_Rx(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double an
         state_kokkos[i] = cos_half * temp_i - CTYPE(0, 1) * sin_half * temp_j;
         state_kokkos[j] = cos_half * temp_j - CTYPE(0, 1) * sin_half * temp_i;
     });
+}
+
+void update_with_Rx_shuffle(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
+    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
+        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
+        ITYPE j = i | (1ULL << target);
+        CTYPE temp_i = state_kokkos[i];
+#ifdef __CUDA_ARCH__
+        CTYPE temp_j = 
+            Kokkos::complex(__shfl_xor_sync(0xffffffff, temp_i.real(), 1 << target), 
+                            __shfl_xor_sync(0xffffffff, temp_i.imag(), 1 << target));
+#else
+        CTYPE temp_j = state_kokkos[j];
+#endif
+        state_kokkos[i] = cos_half * temp_i - CTYPE(0, 1) * sin_half * temp_j;
+        state_kokkos[j] = cos_half * temp_j - CTYPE(0, 1) * sin_half * temp_i;
+    });
+}
+
+void update_with_RX_batched_shuffle(Kokkos::View<CTYPE **> state, UINT n, double angle, UINT target)
+{
+    double angle_half = angle / 2, sin_half = std::sin(angle_half), cos_half = std::cos(angle_half);
+
+    Kokkos::parallel_for(
+        "RX_gate_batched", Kokkos::TeamPolicy(state.extent(1), 1 << 6),
+        KOKKOS_LAMBDA(const TeamHandle &member) {
+            int sample = member.league_rank();
+
+            Kokkos::parallel_for(Kokkos::TeamThreadRange(member, 1ULL << n), [=](ITYPE i) {
+                ITYPE j = i ^ (1ULL << target);
+
+                CTYPE tmp_i = state(i, sample);
+#ifdef __CUDA_ARCH__
+                CTYPE tmp_j =
+                    Kokkos::complex(__shfl_xor_sync(0xffffffff, tmp_i.real(), 1 << target),
+                                    __shfl_xor_sync(0xffffffff, tmp_i.imag(), 1 << target));
+#else
+                CTYPE tmp_j = state(j, sample);
+#endif
+
+                if (j > i) {
+                    state(i, sample) = cos_half * tmp_i - CTYPE(0, 1) * sin_half * tmp_j;
+                } else {
+                    state(i, sample) = CTYPE(0, 1) * sin_half * tmp_i - cos_half * tmp_j;
+                }
+            });
+        });
 }
 
 void update_with_Rx_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
@@ -278,46 +330,134 @@ void update_with_dense_matrix_controlled(Kokkos::View<CTYPE*> state_kokkos, UINT
         });
 }
 
+Kokkos::View<CTYPE*> make_random_state(int n_qubits) {
+    unsigned seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    Kokkos::Random_XorShift64_Pool<> random_pool(seed);
+
+    Kokkos::View<CTYPE*> state("state", 1ULL << n_qubits);
+    Kokkos::parallel_for(1ULL << n_qubits, KOKKOS_LAMBDA(int i) {
+        auto random_generator = random_pool.get_state();
+        double real_part = Kokkos::rand<decltype(random_generator), double>::draw(random_generator);
+        double imag_part = Kokkos::rand<decltype(random_generator), double>::draw(random_generator);
+        state(i) = CTYPE(real_part, imag_part);
+        random_pool.free_state(random_generator);
+    });
+    return state;
+}
+
+double single_target_bench(int n_qubits) {
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1), circuit_gen(0, 4);
+    std::mt19937 mt(std::random_device{}());
+
+    auto state(make_random_state(n_qubits));
+    Kokkos::fence();
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    switch(circuit_gen(mt)) {
+        case 0:
+        update_with_x(state, n_qubits, target_gen(mt));
+        break;
+        case 1:
+        update_with_h(state, n_qubits, target_gen(mt));
+        break;
+        case 2:
+        update_with_x(state, n_qubits, target_gen(mt));
+        break;
+        case 3:
+        update_with_x(state, n_qubits, target_gen(mt));
+        break;
+    }
+    Kokkos::fence();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    return elapsed.count();
+}
+
+double single_qubit_rotation_bench(int n_qubits) {
+    std::uniform_int_distribution<> target_gen(0, 1ULL << n_qubits), circuit_gen(0, 4);
+    std::uniform_real_distribution<> angle_gen(0, 2 * M_PI);
+    std::mt19937 mt(std::random_device{}());
+
+    auto state(make_random_state(n_qubits));
+    Kokkos::fence();
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    switch(circuit_gen(mt)) {
+        case 0:
+        update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
+        break;
+        case 1:
+        update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
+        break;
+        case 2:
+        update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
+        break;
+    }
+    Kokkos::fence();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    return elapsed.count();
+}
+
+double cnot_bench(int n_qubits) {
+    std::uniform_int_distribution<> gen(0, n_qubits - 1);
+    std::mt19937 mt(std::random_device{}());
+
+    auto state(make_random_state(n_qubits));
+    Kokkos::fence();
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    update_with_CNOT(state, n_qubits, gen(mt), gen(mt));
+    Kokkos::fence();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    return elapsed.count();
+}
+
 
 int main(int argc, char *argv[]) {
 Kokkos::initialize();
 {    
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <n_qubits> <n_repeats>" << std::endl;
-        Kokkos::finalize();
+    if (argc < 4) {
+        std::cerr << "Usage: " << argv[0] << " <circuit_id> <n_qubits> <n_repeats>" << std::endl;
         return 1;
     }
-    const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
-    const auto n_repeats = std::strtoul(argv[2], nullptr, 10);
 
-    std::vector<double> results;  // change to double to store seconds
-
-    for (int i = 0; i < n_repeats; ++i) {
-        auto start_time = std::chrono::high_resolution_clock::now();
-
-        Kokkos::View<CTYPE*> init_state("init_state", 1ULL << n_qubits);
-        Kokkos::parallel_for(1ULL << n_qubits, KOKKOS_LAMBDA(int i) {
-            init_state(i) = CTYPE(i, 0);
-        });
-
-        update_with_CNOT_single_loop(init_state, n_qubits, n_qubits / 3, n_qubits * 2 / 3);
-        Kokkos::fence();
-
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        results.push_back(duration.count() / 1e6);         
-    }
+    const auto circuit_id = std::strtoul(argv[1], nullptr, 10);
+    const auto n_qubits = std::strtoul(argv[2], nullptr, 10);
+    const auto n_repeats = std::strtoul(argv[3], nullptr, 10);
 
     std::ofstream ofs("durations.txt");
     if (!ofs.is_open()) {
         std::cerr << "Failed to open file" << std::endl;
-        Kokkos::finalize();
         return 1;
     }
-
     for (int i = 0; i < n_repeats; i++) {
-        std::cout << results[i] << " ";
+        double t;
+        switch(circuit_id) {
+            case 0:
+            t = single_target_bench(n_qubits);
+            break;
+            case 1:
+            t = single_qubit_rotation_bench(n_qubits);
+            break;
+            case 2:
+            t = cnot_bench(n_qubits);
+            break;
+            /*case 3:
+            t = single_target_matrix_bench(n_qubits);
+            break;
+            case 4:
+            t = double_target_matrix_bench(n_qubits);
+            break;
+            case 5:
+            t = double_control_matrix_bench(n_qubits);
+            break;*/
+        }
+        ofs << t << " ";
+        std::cout << t << " ";
     }
+    ofs << std::endl;
     std::cout << std::endl;
 
 }

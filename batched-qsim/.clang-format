@@ -1,0 +1,8 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 4
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AccessModifierOffset: -4
+ColumnLimit: 100
