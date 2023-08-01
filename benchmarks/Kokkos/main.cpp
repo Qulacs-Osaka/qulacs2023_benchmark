@@ -270,19 +270,20 @@ void update_with_CNOT_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qub
     });
 }
 
-void update_with_dense_matrix(Kokkos::View<CTYPE*> state_kokkos, UINT n, const Kokkos::View<UINT*>& target_list, Kokkos::View<CTYPE**> matrix_kokkos) {
+void update_with_dense_matrix(Kokkos::View<CTYPE*> state_kokkos, UINT n, Kokkos::View<UINT*> target_list, Kokkos::View<CTYPE**> matrix_kokkos) {
 
     int num_target = target_list.size(), num_outer = n - num_target;
     int target_mask = 0;
-    for(int i = 0; i < num_target; ++i) target_mask |= 1 << target_list[i];
+    Kokkos::parallel_reduce(n, KOKKOS_LAMBDA(int i, int& lcl_target_mask) {
+        lcl_target_mask |= 1 << target_list[i];
+    }, target_mask);
 
-    
 
     Kokkos::View<int**> state_idx_kokkos("state_idx", 1 << num_outer, 1 << num_target);
     Kokkos::View<CTYPE**> state_updated_kokkos("state_updated", 1 << num_outer, 1 << num_target);
 
     Kokkos::parallel_for("calculate_state_indices", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {1 << num_outer, 1 << num_target}),
-        KOKKOS_LAMBDA (const int idx_outer, const int idx_target) {
+        KOKKOS_LAMBDA (int idx_outer, int idx_target) {
             int idx = idx_outer;
             int target_idx = 0;
             while(target_idx < num_target) {
@@ -307,49 +308,49 @@ void update_with_dense_matrix(Kokkos::View<CTYPE*> state_kokkos, UINT n, const K
         });
 }
 
-void update_with_dense_matrix_controlled(Kokkos::View<CTYPE*> state_kokkos, UINT n, const Kokkos::View<UINT*>& control_list, const Kokkos::View<UINT*>& control_value, const Kokkos::View<UINT*>& target_list, Kokkos::View<CTYPE**> matrix_kokkos) {
-    int num_control = control_list.size(), num_target = target_list.size(), num_outer = n - num_control - num_target;
-    if(num_control == 0) {
-        update_with_dense_matrix(state_kokkos, n, target_list, matrix_kokkos);
-        return;
-    }
+void update_with_dense_matrix_controlled(Kokkos::View<CTYPE*> state_kokkos, UINT n, Kokkos::View<UINT*>& control_list, Kokkos::View<UINT*>& control_value, Kokkos::View<UINT*>& target_list, Kokkos::View<CTYPE**>& matrix_kokkos) {
+    // int num_control = control_list.size(), num_target = target_list.size(), num_outer = n - num_control - num_target;
+    // if(num_control == 0) {
+    //     update_with_dense_matrix(state_kokkos, n, target_list, matrix_kokkos);
+    //     return;
+    // }
 
-    Kokkos::View<int**> controlled_state_idx_kokkos("controlled_state_idx", 1 << num_outer, 1 << num_target);
-    Kokkos::View<CTYPE**> controlled_state_updated_kokkos("controlled_state_updated", 1 << num_outer, 1 << num_target);
+    // Kokkos::View<int**> controlled_state_idx_kokkos("controlled_state_idx", 1 << num_outer, 1 << num_target);
+    // Kokkos::View<CTYPE**> controlled_state_updated_kokkos("controlled_state_updated", 1 << num_outer, 1 << num_target);
 
-    Kokkos::parallel_for("calculate_controlled_state_indices", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {1 << num_outer, 1 << num_target}),
-        KOKKOS_LAMBDA (const int idx_outer, const int idx_target) {
-            int idx = idx_outer;
-            int control_idx = 0, target_idx = 0;
-            while(control_idx < num_control || target_idx < num_target) {
-                if(target_idx == num_target || (control_idx < num_control && control_list(control_idx) < target_list(target_idx))) {
-                    UINT control = control_list(control_idx);
-                    UINT value = control_value(control_idx);
-                    control_idx++;
-                    int upper_mask = ((1 << (n - control)) - 1) << control;
-                    int lower_mask = (1 << control) - 1;
-                    idx = ((idx & upper_mask) << 1) | (value << control) | (idx & lower_mask);
-                } else {
-                    UINT target = target_list(target_idx);
-                    UINT value = idx_target >> target_idx;
-                    target_idx++;
-                    int upper_mask = ((1 << (n - target)) - 1) << target;
-                    int lower_mask = (1 << target) - 1;
-                    idx = ((idx & upper_mask) << 1) | (value << target) | (idx & lower_mask);
-                }
-            }
-            controlled_state_idx_kokkos(idx_outer, idx_target) = idx;
-        });
+    // Kokkos::parallel_for("calculate_controlled_state_indices", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {1 << num_outer, 1 << num_target}),
+    //     KOKKOS_LAMBDA (const int idx_outer, const int idx_target) {
+    //         int idx = idx_outer;
+    //         int control_idx = 0, target_idx = 0;
+    //         while(control_idx < num_control || target_idx < num_target) {
+    //             if(target_idx == num_target || (control_idx < num_control && control_list(control_idx) < target_list(target_idx))) {
+    //                 UINT control = control_list(control_idx);
+    //                 UINT value = control_value(control_idx);
+    //                 control_idx++;
+    //                 int upper_mask = ((1 << (n - control)) - 1) << control;
+    //                 int lower_mask = (1 << control) - 1;
+    //                 idx = ((idx & upper_mask) << 1) | (value << control) | (idx & lower_mask);
+    //             } else {
+    //                 UINT target = target_list(target_idx);
+    //                 UINT value = idx_target >> target_idx;
+    //                 target_idx++;
+    //                 int upper_mask = ((1 << (n - target)) - 1) << target;
+    //                 int lower_mask = (1 << target) - 1;
+    //                 idx = ((idx & upper_mask) << 1) | (value << target) | (idx & lower_mask);
+    //             }
+    //         }
+    //         controlled_state_idx_kokkos(idx_outer, idx_target) = idx;
+    //     });
 
-    Kokkos::parallel_for(Kokkos::MDRangePolicy<Kokkos::Rank<3>>({0, 0, 0}, {1 << num_outer, 1 << num_target, 1 << num_target}),
-        KOKKOS_LAMBDA (const int idx_outer, const int idx_target1, const int idx_target2) {
-            controlled_state_updated_kokkos(idx_outer, idx_target1) += matrix_kokkos(idx_target1, idx_target2) * state_kokkos(controlled_state_idx_kokkos(idx_outer, idx_target2));
-        });
+    // Kokkos::parallel_for(Kokkos::MDRangePolicy<Kokkos::Rank<3>>({0, 0, 0}, {1 << num_outer, 1 << num_target, 1 << num_target}),
+    //     KOKKOS_LAMBDA (const int idx_outer, const int idx_target1, const int idx_target2) {
+    //         controlled_state_updated_kokkos(idx_outer, idx_target1) += matrix_kokkos(idx_target1, idx_target2) * state_kokkos(controlled_state_idx_kokkos(idx_outer, idx_target2));
+    //     });
 
-    Kokkos::parallel_for(Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {1 << num_outer, 1 << num_target}),
-        KOKKOS_LAMBDA (const int idx_outer, const int idx_target) {
-            state_kokkos(controlled_state_idx_kokkos(idx_outer, idx_target)) = controlled_state_updated_kokkos(idx_outer, idx_target);
-        });
+    // Kokkos::parallel_for(Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {1 << num_outer, 1 << num_target}),
+    //     KOKKOS_LAMBDA (const int idx_outer, const int idx_target) {
+    //         state_kokkos(controlled_state_idx_kokkos(idx_outer, idx_target)) = controlled_state_updated_kokkos(idx_outer, idx_target);
+    //     });
 }
 
 Kokkos::View<CTYPE*> make_random_state(int n_qubits) {
@@ -470,15 +471,18 @@ double single_target_matrix_bench(UINT n_qubits) {
         random_pool.free_state(random_generator);
     });
         
-    auto st_time = std::chrono::system_clock::now();
+    auto start_time = std::chrono::system_clock::now();
+    Kokkos::View<UINT*> target("target", 1);
+    Kokkos::View<CTYPE**> matrix("matrix", 2, 2);
     for (int i = 0; i < 10; ++i) {
-        //std::cout << "b" << std::endl;
-        update_with_dense_matrix(state, n_qubits, Kokkos::subview(targets, i, Kokkos::ALL()), Kokkos::subview(matrixes, i, Kokkos::ALL(), Kokkos::ALL()));
+        // targets, matrixes の i 番目のデータをコピー
+        Kokkos::deep_copy(target, Kokkos::subview(targets, i, Kokkos::ALL));
+        Kokkos::deep_copy(matrix, Kokkos::subview(matrixes, i, Kokkos::ALL, Kokkos::ALL));
+        update_with_dense_matrix(state, n_qubits, target, matrix);
     }
-    auto ed_time = std::chrono::system_clock::now();
-
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
-
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    return elapsed.count();
 }
 
 int main(int argc, char *argv[]) {
