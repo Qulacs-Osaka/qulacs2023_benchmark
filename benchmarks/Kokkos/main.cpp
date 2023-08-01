@@ -21,6 +21,25 @@ void update_with_x(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT targe
     });
 }
 
+void update_with_y(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
+        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
+        ITYPE j = i | (1ULL << target);
+        Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[j]);
+        state_kokkos[i] *= CTYPE(0, 1);
+        state_kokkos[j] *= CTYPE(0, -1);
+    });
+}
+
+void update_with_z(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
+    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
+        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it | (1ULL << target);
+        state_kokkos[i] *= -1;
+    });
+}
+
 void update_with_x_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
     const ITYPE low_mask = (1ULL << target) - 1;
     const ITYPE high_mask = ~low_mask;
@@ -252,9 +271,12 @@ void update_with_CNOT_single_loop(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qub
 }
 
 void update_with_dense_matrix(Kokkos::View<CTYPE*> state_kokkos, UINT n, const Kokkos::View<UINT*>& target_list, Kokkos::View<CTYPE**> matrix_kokkos) {
+
     int num_target = target_list.size(), num_outer = n - num_target;
     int target_mask = 0;
     for(int i = 0; i < num_target; ++i) target_mask |= 1 << target_list[i];
+
+    
 
     Kokkos::View<int**> state_idx_kokkos("state_idx", 1 << num_outer, 1 << num_target);
     Kokkos::View<CTYPE**> state_updated_kokkos("state_updated", 1 << num_outer, 1 << num_target);
@@ -346,26 +368,28 @@ Kokkos::View<CTYPE*> make_random_state(int n_qubits) {
 }
 
 double single_target_bench(int n_qubits) {
-    std::uniform_int_distribution<> target_gen(0, n_qubits - 1), circuit_gen(0, 4);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1), circuit_gen(0, 3);
     std::mt19937 mt(std::random_device{}());
 
     auto state(make_random_state(n_qubits));
     Kokkos::fence();
 
     auto start_time = std::chrono::high_resolution_clock::now();
-    switch(circuit_gen(mt)) {
-        case 0:
-        update_with_x(state, n_qubits, target_gen(mt));
-        break;
-        case 1:
-        update_with_h(state, n_qubits, target_gen(mt));
-        break;
-        case 2:
-        update_with_x(state, n_qubits, target_gen(mt));
-        break;
-        case 3:
-        update_with_x(state, n_qubits, target_gen(mt));
-        break;
+    for (int i = 0; i < 10; ++i) {
+        switch(circuit_gen(mt)) {
+            case 0:
+            update_with_x(state, n_qubits, target_gen(mt));
+            break;
+            case 1:
+            update_with_y(state, n_qubits, target_gen(mt));
+            break;
+            case 2:
+            update_with_z(state, n_qubits, target_gen(mt));
+            break;
+            case 3:
+            update_with_h(state, n_qubits, target_gen(mt));
+            break;
+        }
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
@@ -374,7 +398,7 @@ double single_target_bench(int n_qubits) {
 }
 
 double single_qubit_rotation_bench(int n_qubits) {
-    std::uniform_int_distribution<> target_gen(0, 1ULL << n_qubits), circuit_gen(0, 4);
+    std::uniform_int_distribution<> target_gen(0, n_qubits - 1), circuit_gen(0, 2);
     std::uniform_real_distribution<> angle_gen(0, 2 * M_PI);
     std::mt19937 mt(std::random_device{}());
 
@@ -382,16 +406,18 @@ double single_qubit_rotation_bench(int n_qubits) {
     Kokkos::fence();
 
     auto start_time = std::chrono::high_resolution_clock::now();
-    switch(circuit_gen(mt)) {
-        case 0:
-        update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
-        break;
-        case 1:
-        update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
-        break;
-        case 2:
-        update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
-        break;
+    for (int i = 0; i < 10; ++i) {
+        switch(circuit_gen(mt)) {
+            case 0:
+            update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
+            break;
+            case 1:
+            update_with_Ry(state, n_qubits, angle_gen(mt), target_gen(mt));
+            break;
+            case 2:
+            update_with_Rz(state, n_qubits, angle_gen(mt), target_gen(mt));
+            break;
+        }
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
@@ -407,13 +433,53 @@ double cnot_bench(int n_qubits) {
     Kokkos::fence();
 
     auto start_time = std::chrono::high_resolution_clock::now();
-    update_with_CNOT(state, n_qubits, gen(mt), gen(mt));
+    for (int i = 0; i < 10; ++i) {
+        int tar = gen(mt);
+        int ctrl = gen(mt);
+        while (tar == ctrl) ctrl = gen(mt);
+        update_with_CNOT(state, n_qubits, ctrl, tar);
+    }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     return elapsed.count();
 }
 
+double single_target_matrix_bench(UINT n_qubits) {
+
+    Kokkos::View<UINT**> targets("targets", 10, 1);
+    Kokkos::View<CTYPE***> matrixes("matrixes", 10, 2, 2);
+    auto state(make_random_state(n_qubits));
+    Kokkos::fence();
+
+    unsigned seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    Kokkos::Random_XorShift64_Pool<> random_pool(seed);
+
+    Kokkos::parallel_for(10, KOKKOS_LAMBDA(int i) {
+        auto random_generator = random_pool.get_state();
+        targets(i, 0) = Kokkos::rand<decltype(random_generator), UINT>::draw(random_generator, 0, n_qubits - 1);
+        random_pool.free_state(random_generator);
+    });
+
+    Kokkos::MDRangePolicy<Kokkos::Rank<3>> policy({0, 0, 0}, {10, 2, 2});
+    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(int i, int j, int k) {
+        auto random_generator = random_pool.get_state();
+        double real_part = Kokkos::rand<decltype(random_generator), double>::draw(random_generator);
+        double imag_part = Kokkos::rand<decltype(random_generator), double>::draw(random_generator);
+        matrixes(i, j, k) = CTYPE(real_part, imag_part);
+        random_pool.free_state(random_generator);
+    });
+        
+    auto st_time = std::chrono::system_clock::now();
+    for (int i = 0; i < 10; ++i) {
+        //std::cout << "b" << std::endl;
+        update_with_dense_matrix(state, n_qubits, Kokkos::subview(targets, i, Kokkos::ALL()), Kokkos::subview(matrixes, i, Kokkos::ALL(), Kokkos::ALL()));
+    }
+    auto ed_time = std::chrono::system_clock::now();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+
+}
 
 int main(int argc, char *argv[]) {
 Kokkos::initialize();
@@ -444,10 +510,10 @@ Kokkos::initialize();
             case 2:
             t = cnot_bench(n_qubits);
             break;
-            /*case 3:
+            case 3:
             t = single_target_matrix_bench(n_qubits);
             break;
-            case 4:
+            /*case 4:
             t = double_target_matrix_bench(n_qubits);
             break;
             case 5:
