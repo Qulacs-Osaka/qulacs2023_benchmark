@@ -4,7 +4,7 @@ RUN apt-get update -y && apt-get install wget gpg -y
 RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor > /usr/share/keyrings/oneapi-archive-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" > /etc/apt/sources.list.d/oneAPI.list \
     && apt-get update -y \
-    && apt-get install -y intel-basekit=2023.2.0-49384  intel-hpc-kit=2023.2.0-49438
+    && apt-get install -y intel-basekit=2023.2.0-49384  intel-hpckit=2023.2.0-49438
 
 COPY oneapi-for-nvidia-gpus-2023.2.0-cuda-12.0-linux.sh /tmp
 RUN sh /tmp/oneapi-for-nvidia-gpus-2023.2.0-cuda-12.0-linux.sh -y
