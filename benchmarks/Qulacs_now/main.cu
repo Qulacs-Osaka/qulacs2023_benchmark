@@ -13,8 +13,6 @@
 
 using Complex = std::complex<double>;
 
-void test(int, int, std::vector<double>&);
-
 double single_qubit_bench(UINT);
 double single_qubit_rotation_bench(UINT);
 double cnot_bench(UINT);
@@ -58,48 +56,19 @@ int main(int argc, char** argv){
                 t = single_target_matrix_bench(qubit);
                 break;
             }
-            // case 4:
-            //     t = double_target_matrix_bench(qubit);
-            //     break;
-            // case 5:
-            //     t = double_control_matrix_bench(qubit);
-            //     break;
+            case 4:{
+                t = double_target_matrix_bench(qubit);
+                break;
+            }
+            case 5:{
+                t = double_control_matrix_bench(qubit);
+                break;
+            }
         }
         ofs << t << " ";
     }
     ofs << std::endl;
     return 0;
-}
-
-void test(int qubit_num, int repeat, std::vector<double>& time_list){
-    for(int i=0;i<repeat;i++){
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start);
-        QuantumStateGpu state(qubit_num);
-        state.set_Haar_random_state();
-        auto gateX = gate::X(0);
-        auto gateH = gate::H(0);
-        auto gateCNOT = gate::CNOT(0,1);
-        auto gateRX = gate::RX(0,0.5);
-        auto gateRZ = gate::RZ(0,0.5);
-        auto gateRY = gate::RY(0,1);
-        // auto gateMatrix = gate::DenseMatrix(0,SparseComplexMatrix::random(2,2));
-        gateX->update_quantum_state(&state);
-        gateH->update_quantum_state(&state);
-        gateCNOT->update_quantum_state(&state);
-        gateRX->update_quantum_state(&state);
-        gateRZ->update_quantum_state(&state);
-        gateRY->update_quantum_state(&state);
-        // gateMatrix->update_quantum_state(&state);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        float time = 0;
-        cudaEventElapsedTime(&time, start, stop); // msで計測
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-        time_list.push_back(time);
-    }
 }
 
 double single_qubit_bench(UINT qubit){
@@ -381,9 +350,19 @@ double double_control_matrix_bench(UINT qubit){
         ComplexMatrix mat(2, 2);
         mat << matrix[i][0], matrix[i][1],
                matrix[i][2], matrix[i][3];
-        auto gateMatrix = gate::DenseMatrix(control_list[i], control_value[i], target[i], mat);
+        auto gateMatrix = gate::DenseMatrix(target[i], mat);
+        gateMatrix->add_control_qubit(control_list[i][0], control_value[i][0]);
+        gateMatrix->add_control_qubit(control_list[i][1], control_value[i][1]);
         gateMatrix->update_quantum_state(&state);
     }
+
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float time = 0;
+    cudaEventElapsedTime(&time, start, stop); // msで計測
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    return time;
 }
 
 
