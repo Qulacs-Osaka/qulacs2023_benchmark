@@ -13,4 +13,4 @@ fi
 mkdir -p /app/build && cd /app/build
 cmake .. -DCMAKE_PREFIX_PATH=/app/install
 make
-cp myTarget ../main.out
+cp myTarget ../main
