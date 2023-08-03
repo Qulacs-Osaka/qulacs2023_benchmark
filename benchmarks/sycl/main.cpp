@@ -161,50 +161,60 @@ void update_with_cnot(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT
 
 void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& target_list, sycl::buffer<Complex, 2>& matrix_sycl) {
     int num_target = target_list.size(), num_outer = n - num_target;
-    int target_mask = 0;
-    for(int idx : target_list) target_mask |= 1 << idx;
     sycl::buffer<UINT, 1> target_list_sycl(target_list);
-    sycl::buffer<int, 2> state_idx_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
-    sycl::buffer<Complex, 2> state_updated_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
+    sycl::buffer<int, 1> outer_bits_expanded_sycl(sycl::range<1>(1 << num_outer));
+    sycl::buffer<int, 1> target_bits_expanded_sycl(sycl::range<1>(1 << num_target));
     q.submit([&](sycl::handler& h) {
         auto target_list_acc = target_list_sycl.get_access<sycl::access::mode::read>(h);
-        auto state_idx_acc = state_idx_sycl.get_access<sycl::access::mode::write>(h);
-        h.parallel_for(sycl::range<1>(1 << (num_outer + num_target)), [=](sycl::id<1> it) {
-            int outer_bits = it[0] >> num_target;
-            int target_bits = it[0] & ((1 << num_target) - 1);
-            int idx = outer_bits;
-            int target_idx = 0;
-            while(target_idx < num_target) {
+        auto outer_bits_expanded_acc = outer_bits_expanded_sycl.get_access<sycl::access::mode::write>(h);
+        h.parallel_for(sycl::range<1>(1 << num_outer), [=](sycl::id<1> it) {
+            int bits = it[0];
+            for(UINT target_idx = 0; target_idx < num_target; target_idx++) {
                 UINT target = target_list_acc[target_idx];
-                UINT value = target_bits >> target_idx;
-                target_idx++;
                 int upper_mask = ((1 << (n - target)) - 1) << target;
                 int lower_mask = (1 << target) - 1;
-                idx = ((idx & upper_mask) << 1) | (value << target) | (idx & lower_mask);
+                bits = (bits & upper_mask) << 1 | (bits & lower_mask);
             }
-            state_idx_acc[outer_bits][target_bits] = idx;
+            outer_bits_expanded_acc[it[0]] = bits;
         });
     });
     q.submit([&](sycl::handler& h) {
-        auto state_acc = state_sycl.get_access<sycl::access::mode::read>(h);
-        auto state_idx_acc = state_idx_sycl.get_access<sycl::access::mode::read>(h);
-        auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::write>(h);
+        auto target_list_acc = target_list_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_bits_expanded_acc = target_bits_expanded_sycl.get_access<sycl::access::mode::write>(h);
+        h.parallel_for(sycl::range<1>(1 << num_target), [=](sycl::id<1> it) {
+            int bits = 0;
+            for(UINT target_idx = 0; target_idx < num_target; target_idx++) {
+                UINT target = target_list_acc[target_idx];
+                bits |= 1 << target;
+            }
+            target_bits_expanded_acc[it[0]] = bits;
+        });
+    });
+    sycl::buffer<Complex, 1> state_updated_sycl(sycl::range<1>(1 << (num_outer + num_target)));
+    q.submit([&](sycl::handler& h) {
+        auto outer_bits_expanded_acc = outer_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_bits_expanded_acc = target_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
         auto matrix_acc = matrix_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_acc = state_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::write>(h);
         h.parallel_for(sycl::range<1>(1 << (num_outer + num_target + num_target)), [=](sycl::id<1> it) {
             int outer_bits = it[0] >> (num_target + num_target);
             int target_bits_1 = it[0] >> (num_target) & ((1 << num_target) - 1);
             int target_bits_2 = it[0] & ((1 << num_target) - 1);
-            state_updated_acc[outer_bits][target_bits_1] += matrix_acc[target_bits_1][target_bits_2] * state_acc[state_idx_acc[outer_bits][target_bits_2]];
+            int source_idx = outer_bits_expanded_acc[outer_bits] | target_bits_expanded_acc[target_bits_2];
+            state_updated_acc[outer_bits << num_target | target_bits_1] += matrix_acc[target_bits_1][target_bits_2] * state_acc[source_idx];
         });
     });
     q.submit([&](sycl::handler& h) {
-        auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
-        auto state_idx_acc = state_idx_sycl.get_access<sycl::access::mode::read>(h);
+        auto outer_bits_expanded_acc = outer_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_bits_expanded_acc = target_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
         auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
         h.parallel_for(sycl::range<1>(1 << (num_outer + num_target)), [=](sycl::id<1> it) {
             int outer_bits = it[0] >> num_target;
             int target_bits = it[0] & ((1 << num_target) - 1);
-            state_acc[state_idx_acc[outer_bits][target_bits]] = state_updated_acc[outer_bits][target_bits];
+            int dest_idx = outer_bits_expanded_acc[outer_bits] | target_bits_expanded_acc[target_bits];
+            state_acc[dest_idx] = state_updated_acc[it[0]];
         });
     });
 }
@@ -212,67 +222,75 @@ void update_with_dense_matrix(sycl::queue& q, sycl::buffer<Complex, 1>& state_sy
 void update_with_dense_matrix_controlled(sycl::queue& q, sycl::buffer<Complex, 1>& state_sycl, UINT n, const std::vector<UINT>& control_list, const std::vector<UINT>& control_value, const std::vector<UINT>& target_list, sycl::buffer<Complex, 2>& matrix_sycl) {
     int num_control = control_list.size(), num_target = target_list.size(), num_outer = n - num_control - num_target;
     if(num_control == 0) update_with_dense_matrix(q, state_sycl, n, target_list, matrix_sycl);
-    int control_mask = 0, control_value_mask = 0, target_mask = 0;
+    int control_value_mask = 0;
     for(int i = 0; i < num_control; i++) {
-        control_mask |= 1 << control_list[i];
-        if(control_value[i]) control_value_mask |= 1 << control_list[i];
+        if(control_value[i]) control_value_mask |= control_list[i];
     }
-    for(int idx : target_list) target_mask |= 1 << idx;
     sycl::buffer<UINT, 1> control_list_sycl(control_list);
-    sycl::buffer<UINT, 1> control_value_sycl(control_value);
     sycl::buffer<UINT, 1> target_list_sycl(target_list);
-    sycl::buffer<int, 2> controlled_state_idx_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
-    sycl::buffer<Complex, 2> controlled_state_updated_sycl(sycl::range<2>(1 << num_outer, 1 << num_target));
+    sycl::buffer<int, 1> outer_bits_expanded_sycl(sycl::range<1>(1 << num_outer));
+    sycl::buffer<int, 1> target_bits_expanded_sycl(sycl::range<1>(1 << num_target));
     q.submit([&](sycl::handler& h) {
-        auto control_list_acc = control_list_sycl.get_access<sycl::access::mode::read>(h);
-        auto control_value_acc = control_value_sycl.get_access<sycl::access::mode::read>(h);
         auto target_list_acc = target_list_sycl.get_access<sycl::access::mode::read>(h);
-        auto controlled_state_idx_acc = controlled_state_idx_sycl.get_access<sycl::access::mode::write>(h);
-        h.parallel_for(sycl::range<1>(1 << (num_outer + num_target)), [=](sycl::id<1> it) {
-            int outer_bits = it[0] >> num_target;
-            int target_bits = it[0] & ((1 << num_target) - 1);
-            int idx = outer_bits;
-            int control_idx = 0, target_idx = 0;
-            while(control_idx < num_control || target_idx < num_target) {
-                if(target_idx == num_target || (control_idx < num_control && control_list_acc[control_idx] < target_list_acc[target_idx])) {
-                    UINT control = control_list_acc[control_idx];
-                    UINT value = control_value_acc[control_idx];
-                    control_idx++;
-                    int upper_mask = ((1 << (n - control)) - 1) << control;
-                    int lower_mask = (1 << control) - 1;
-                    idx = ((idx & upper_mask) << 1) | (value << control) | (idx & lower_mask);
-                } else {
-                    UINT target = target_list_acc[target_idx];
-                    UINT value = target_bits >> target_idx;
-                    target_idx++;
+        auto control_list_acc = control_list_sycl.get_access<sycl::access::mode::read>(h);
+        auto outer_bits_expanded_acc = outer_bits_expanded_sycl.get_access<sycl::access::mode::write>(h);
+        h.parallel_for(sycl::range<1>(1 << num_outer), [=](sycl::id<1> it) {
+            int bits = it[0];
+            for(UINT target_idx = 0, control_idx = 0; target_idx < num_target || control_idx < num_control;) {
+                UINT target = target_idx == num_target ? n : target_list_acc[target_idx];
+                UINT control = control_idx == num_control ? n : control_list_acc[control_idx];
+                if(target < control) {
                     int upper_mask = ((1 << (n - target)) - 1) << target;
                     int lower_mask = (1 << target) - 1;
-                    idx = ((idx & upper_mask) << 1) | (value << target) | (idx & lower_mask);
+                    bits = (bits & upper_mask) << 1 | (bits & lower_mask);
+                    target_idx++;
+                } else {
+                    int upper_mask = ((1 << (n - control)) - 1) << control;
+                    int lower_mask = (1 << control) - 1;
+                    bits = (bits & upper_mask) << 1 | (bits & lower_mask);
+                    control_idx++;
                 }
             }
-            controlled_state_idx_acc[outer_bits][target_bits] = idx;
+            outer_bits_expanded_acc[it[0]] = bits;
         });
     });
     q.submit([&](sycl::handler& h) {
-        auto state_acc = state_sycl.get_access<sycl::access::mode::read>(h);
-        auto controlled_state_idx_acc = controlled_state_idx_sycl.get_access<sycl::access::mode::read>(h);
-        auto controlled_state_updated_acc = controlled_state_updated_sycl.get_access<sycl::access::mode::write>(h);
+        auto target_list_acc = target_list_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_bits_expanded_acc = target_bits_expanded_sycl.get_access<sycl::access::mode::write>(h);
+        h.parallel_for(sycl::range<1>(1 << num_target), [=](sycl::id<1> it) {
+            int bits = 0;
+            for(UINT target_idx = 0; target_idx < num_target; target_idx++) {
+                UINT target = target_list_acc[target_idx];
+                bits |= 1 << target;
+            }
+            target_bits_expanded_acc[it[0]] = bits;
+        });
+    });
+    sycl::buffer<Complex, 1> state_updated_sycl(sycl::range<1>(1 << (num_outer + num_target)));
+    q.submit([&](sycl::handler& h) {
+        auto outer_bits_expanded_acc = outer_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_bits_expanded_acc = target_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
         auto matrix_acc = matrix_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_acc = state_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::write>(h);
         h.parallel_for(sycl::range<1>(1 << (num_outer + num_target + num_target)), [=](sycl::id<1> it) {
             int outer_bits = it[0] >> (num_target + num_target);
             int target_bits_1 = it[0] >> (num_target) & ((1 << num_target) - 1);
             int target_bits_2 = it[0] & ((1 << num_target) - 1);
-            controlled_state_updated_acc[outer_bits][target_bits_1] += matrix_acc[target_bits_1][target_bits_2] * state_acc[controlled_state_idx_acc[outer_bits][target_bits_2]];
+            int source_idx = outer_bits_expanded_acc[outer_bits] | target_bits_expanded_acc[target_bits_2] | control_value_mask;
+            state_updated_acc[outer_bits << num_target | target_bits_1] += matrix_acc[target_bits_1][target_bits_2] * state_acc[source_idx];
         });
     });
     q.submit([&](sycl::handler& h) {
+        auto outer_bits_expanded_acc = outer_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
+        auto target_bits_expanded_acc = target_bits_expanded_sycl.get_access<sycl::access::mode::read>(h);
         auto state_acc = state_sycl.get_access<sycl::access::mode::write>(h);
-        auto controlled_state_idx_acc = controlled_state_idx_sycl.get_access<sycl::access::mode::read>(h);
-        auto controlled_state_updated_acc = controlled_state_updated_sycl.get_access<sycl::access::mode::read>(h);
+        auto state_updated_acc = state_updated_sycl.get_access<sycl::access::mode::read>(h);
         h.parallel_for(sycl::range<1>(1 << (num_outer + num_target)), [=](sycl::id<1> it) {
             int outer_bits = it[0] >> num_target;
             int target_bits = it[0] & ((1 << num_target) - 1);
-            state_acc[controlled_state_idx_acc[outer_bits][target_bits]] = controlled_state_updated_acc[outer_bits][target_bits];
+            int dest_idx = outer_bits_expanded_acc[outer_bits] | target_bits_expanded_acc[target_bits] | control_value_mask;
+            state_acc[dest_idx] = state_updated_acc[it[0]];
         });
     });
 }
