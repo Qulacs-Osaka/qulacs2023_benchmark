@@ -28,7 +28,7 @@ def plot_n_qubits(targets: list[str], circuit_id: int, data_directory: Path, fig
 
 
 def main() -> None:
-    targets = ["qulacs"]
+    targets = [entry.name for entry in Path("benchmarks").iterdir() if entry.is_dir()]
     figure_directory = Path("figures")
     figure_directory.mkdir(exist_ok=True)
 
