@@ -35,23 +35,6 @@ class BenchmarkCase:
     n_qubits_end: int
     n_repeat: int
 
-    def build_image(self) -> None:
-        """Build docker image for benchmark"""
-        user_id = os.getuid()
-        group_id = os.getgid()
-        print("Building image")
-        # Pass UID and GID to create user with same UID and GID as host user.
-        build_result = subprocess.run(["docker", "build", "--build-arg", f"USER_ID={user_id}", "--build-arg", f"GROUP_ID={group_id}", "-t", f"qulacs2023_benchmarks/{self.target}:latest", f"./benchmarks/{self.target}/"], capture_output=True)
-        if build_result.returncode != 0:
-            raise RuntimeError(f"Failed to build {self.target} image: {build_result.stderr}")
-
-    def build_program(self, mount_config: str, image_tag:str) -> None:
-        """Build benchmark program in the docker container"""
-        print("Building benchmark program")
-        build_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"], capture_output=True)
-        if build_result.returncode != 0:
-            raise RuntimeError(f"Failed to build a program in {self.target}.")
-
     def run_one_benchmark(self, n_qubits: int, mount_config: str, image_tag: str) -> float:
         """Run benchmark for one circuit and one number of qubits"""
         run_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{self.circuit_id}", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
@@ -66,13 +49,8 @@ class BenchmarkCase:
 
     def run_benchmark(self) -> BenchmarkResult:
         print(f"=== {self.target} ===")
-        self.build_image()
 
-        current_directory = os.getcwd()
-        mount_config = f"type=bind,source={current_directory}/benchmarks/{self.target},target=/benchmarks"
-        image_tag = f"qulacs2023_benchmarks/{self.target}:latest"
-
-        self.build_program(mount_config, image_tag)
+        mount_config, image_tag = render_docker_config(self.target)
 
         for _ in range(self.warmup):
             # Fixed to 3 qubits for warmup. No special reason.
@@ -93,6 +71,33 @@ class BenchmarkCase:
         return statistics.fmean(durations)
 
 
+def build_image(target: str) -> None:
+    """Build docker image for benchmark"""
+    user_id = os.getuid()
+    group_id = os.getgid()
+    print("Building image")
+    # Pass UID and GID to create user with same UID and GID as host user.
+    build_result = subprocess.run(["docker", "build", "--build-arg", f"USER_ID={user_id}", "--build-arg", f"GROUP_ID={group_id}", "-t", f"qulacs2023_benchmarks/{target}:latest", f"./benchmarks/{target}/"], capture_output=True)
+    if build_result.returncode != 0:
+        raise RuntimeError(f"Failed to build {target} image: {build_result.stderr}")
+
+
+def build_program(target: str, mount_config: str, image_tag:str) -> None:
+    """Build benchmark program in the docker container"""
+    print("Building benchmark program")
+    build_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"], capture_output=True)
+    if build_result.returncode != 0:
+        raise RuntimeError(f"Failed to build a program in {target}.")
+
+
+def render_docker_config(target: str) -> tuple[str, str]:
+    """Render mount config and image tag for benchmark target"""
+    current_directory = os.getcwd()
+    mount_config = f"type=bind,source={current_directory}/benchmarks/{target},target=/benchmarks"
+    image_tag = f"qulacs2023_benchmarks/{target}:latest"
+    return mount_config, image_tag
+
+
 @click.command
 @click.option("--target", "-t", default=["qulacs"], multiple=True, help="Benchmark target. Specify directory name of benchmark code")
 @click.option("--circuits", "-c", default=[0, 1, 2, 3, 4, 5], multiple=True, help="Circuit type. Specify circuit ID defined in README.md")
@@ -101,6 +106,11 @@ class BenchmarkCase:
 @click.option("--n-qubits-end", "-e", default=26, type=int, help="Number of qubits to end benchmark, exclusive")
 @click.option("--n-repeat", "-r", default=10, type=int, help="Number of times to repeat benchmark")
 def main(target: list[str], circuits: list[int], warmup: int, n_qubits_begin: int, n_qubits_end: int, n_repeat: int):
+    for t in target:
+        mount_config, image_tag = render_docker_config(t)
+        build_image(t)
+        build_program(t, mount_config, image_tag)
+
     cases = [BenchmarkCase(t, c, warmup, n_qubits_begin, n_qubits_end, n_repeat) for t in target for c in circuits]
     results = [case.run_benchmark() for case in cases]
     for result in results:
