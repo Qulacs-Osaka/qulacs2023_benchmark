@@ -481,11 +481,8 @@ Kokkos::initialize();
             return 1;
         }
         ofs << t << " ";
-        std::cout << t << " ";
     }
     ofs << std::endl;
-    std::cout << std::endl;
-
 }
 Kokkos::finalize();
 }
