@@ -31,6 +31,11 @@ int main(int argc, char** argv){
     UINT qubit = std::strtoul(argv[2], nullptr, 10);
     UINT repeat = std::strtoul(argv[3], nullptr, 10);
 
+    if(circuit_id < 0 || circuit_id > 5){
+        std::cerr << "circuit_number must be 0-5" << std::endl;
+        return 1;
+    }
+
     std::ofstream ofs("duration.txt");
     if (!ofs.is_open()) {
         std::cerr << "Failed to open file" << std::endl;
