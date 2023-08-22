@@ -6,6 +6,7 @@
 #include <fstream>
 #include <algorithm>
 #include <random>
+#include <assert.h>
 
 using UINT = unsigned int;
 using ITYPE = unsigned long long;
@@ -362,7 +363,7 @@ double single_target_matrix_bench(UINT n_qubits) {
 }
 
 double double_target_matrix_bench(UINT n_qubits) {
-
+    assert(n_qubits >= 3);
     Kokkos::View<UINT**> targets("targets", 10, 2);
     Kokkos::View<CTYPE***> matrixes("matrixes", 10, 4, 4);
     auto state(make_random_state(n_qubits));
@@ -403,6 +404,7 @@ double double_target_matrix_bench(UINT n_qubits) {
 }
 
 double double_control_matrix_bench(UINT n_qubits) {
+    assert(n_qubits >= 3);
     Kokkos::View<UINT**> targets("targets", 10, 1);
     Kokkos::View<UINT**> control_list("control_list", 10, 2);
     Kokkos::View<UINT**> control_values("control_values", 10, 2);
