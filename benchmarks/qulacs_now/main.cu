@@ -31,12 +31,7 @@ int main(int argc, char** argv){
     UINT qubit = std::strtoul(argv[2], nullptr, 10);
     UINT repeat = std::strtoul(argv[3], nullptr, 10);
 
-    if(circuit_id < 0 || circuit_id > 5){
-        std::cerr << "circuit_number must be 0-5" << std::endl;
-        return 1;
-    }
-
-    std::ofstream ofs("duration.txt");
+    std::ofstream ofs("durations.txt");
     if (!ofs.is_open()) {
         std::cerr << "Failed to open file" << std::endl;
         return 1;
@@ -140,7 +135,7 @@ double single_qubit_rotation_bench(UINT qubit){
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
-    for(int i=0;i<10;i++){
+    for(int i=0;i<(1<<qubit);i++){
         state_vector[i] = {normal(mt), normal(mt)};
     }
 
@@ -233,7 +228,7 @@ double single_target_matrix_bench(UINT qubit){
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
-    for(int i=0;i<10;i++){
+    for(int i=0;i<(1<<qubit);i++){
         state_vector[i] = {normal(mt), normal(mt)};
     }
 
@@ -277,7 +272,7 @@ double double_target_matrix_bench(UINT qubit){
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
-    for(int i=0;i<10;i++){
+    for(int i=0;i<(1<<qubit);i++){
         state_vector[i] = {normal(mt), normal(mt)};
     }
 
@@ -318,6 +313,7 @@ double double_target_matrix_bench(UINT qubit){
 }
 
 double double_control_matrix_bench(UINT qubit){
+    assert(qubit >= 3);
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
     std::uniform_int_distribution<> target_gen(0, qubit - 1);
@@ -327,7 +323,7 @@ double double_control_matrix_bench(UINT qubit){
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
-    for(int i=0;i<10;i++){
+    for(int i=0;i<(1<<qubit);i++){
         state_vector[i] = {normal(mt), normal(mt)};
     }
 
@@ -337,9 +333,8 @@ double double_control_matrix_bench(UINT qubit){
     std::vector<std::vector<Complex>> matrix(10, std::vector<Complex>(4)); 
     for(UINT i=0;i<10;i++){
         target[i] = target_gen(mt);
-        control_list[i][0] = target_gen_1(mt);
+        control_list[i][0] = target_gen_1(mt); if(target[i] == control_list[i][0]) control_list[i][0] = qubit - 1;
         control_list[i][1] = target_gen_2(mt);
-        if(control_list[i][0] == target[i]) control_list[i][0] = qubit-1;
         if(control_list[i][1] == target[i]) control_list[i][1] = qubit-2;
         if(control_list[i][0] == control_list[i][1]) control_list[i][1] = qubit-1;
         for(int j=0;j<2;j++) control_value[i][j] = binary_gen(mt);
