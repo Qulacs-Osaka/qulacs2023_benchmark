@@ -271,8 +271,7 @@ double single_target_bench(int n_qubits) {
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    return elapsed.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 }
 
 double single_qubit_rotation_bench(int n_qubits) {
@@ -299,8 +298,7 @@ double single_qubit_rotation_bench(int n_qubits) {
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    return elapsed.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 }
 
 double cnot_bench(int n_qubits) {
@@ -319,8 +317,7 @@ double cnot_bench(int n_qubits) {
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    return elapsed.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 }
 
 double single_target_matrix_bench(UINT n_qubits) {
@@ -358,8 +355,7 @@ double single_target_matrix_bench(UINT n_qubits) {
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    return elapsed.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 }
 
 double double_target_matrix_bench(UINT n_qubits) {
@@ -399,8 +395,7 @@ double double_target_matrix_bench(UINT n_qubits) {
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    return elapsed.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 }
 
 double double_control_matrix_bench(UINT n_qubits) {
@@ -451,8 +446,7 @@ double double_control_matrix_bench(UINT n_qubits) {
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    return elapsed.count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 }
 
 int main(int argc, char *argv[]) {
