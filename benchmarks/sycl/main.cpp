@@ -314,7 +314,7 @@ double single_qubit_bench(UINT n_qubits) {
 
     sycl::queue q(sycl::gpu_selector_v);
     auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
-    auto st_time =std::chrono::system_clock::now();
+    auto st_time =std::chrono::high_resolution_clock::now();
     for(UINT i = 0; i < 10; i++) {
         switch(gate[i]) {
             case 0:
@@ -332,9 +332,9 @@ double single_qubit_bench(UINT n_qubits) {
         }
     }
     q.wait();
-    auto ed_time = std::chrono::system_clock::now();
+    auto ed_time = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ed_time - st_time).count();
 }
 
 double single_qubit_rotation_bench(UINT n_qubits) {
@@ -361,7 +361,7 @@ double single_qubit_rotation_bench(UINT n_qubits) {
 
     sycl::queue q(sycl::gpu_selector_v);
     auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
-    auto st_time =std::chrono::system_clock::now();
+    auto st_time =std::chrono::high_resolution_clock::now();
     for(UINT i = 0; i < 10; i++) {
         switch(gate[i]) {
             case 0:
@@ -376,9 +376,9 @@ double single_qubit_rotation_bench(UINT n_qubits) {
         }
     }
     q.wait();
-    auto ed_time = std::chrono::system_clock::now();
+    auto ed_time = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ed_time - st_time).count();
 }
 
 double cnot_bench(UINT n_qubits) {
@@ -402,14 +402,14 @@ double cnot_bench(UINT n_qubits) {
 
     sycl::queue q(sycl::gpu_selector_v);
     auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
-    auto st_time =std::chrono::system_clock::now();
+    auto st_time =std::chrono::high_resolution_clock::now();
     for(UINT i = 0; i < 10; i++) {
         update_with_cnot(q, state_sycl, n_qubits, control[i], target[i]);
     }
     q.wait();
-    auto ed_time = std::chrono::system_clock::now();
+    auto ed_time = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ed_time - st_time).count();
 }
 
 double single_target_matrix_bench(UINT n_qubits) {
@@ -432,15 +432,15 @@ double single_target_matrix_bench(UINT n_qubits) {
 
     sycl::queue q(sycl::gpu_selector_v);
     auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
-    auto st_time =std::chrono::system_clock::now();
+    auto st_time =std::chrono::high_resolution_clock::now();
     for(UINT i = 0; i < 10; i++) {
         auto matrix_sycl = sycl::buffer(matrix[i].data(), sycl::range<2>(2, 2));
         update_with_dense_matrix(q, state_sycl, n_qubits, {target[i]}, matrix_sycl);
     }
     q.wait();
-    auto ed_time = std::chrono::system_clock::now();
+    auto ed_time = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ed_time - st_time).count();
 }
 
 double double_target_matrix_bench(UINT n_qubits) {
@@ -465,15 +465,15 @@ double double_target_matrix_bench(UINT n_qubits) {
 
     sycl::queue q(sycl::gpu_selector_v);
     auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
-    auto st_time =std::chrono::system_clock::now();
+    auto st_time =std::chrono::high_resolution_clock::now();
     for(UINT i = 0; i < 10; i++) {
         auto matrix_sycl = sycl::buffer(matrix[i].data(), sycl::range<2>(4, 4));
         update_with_dense_matrix(q, state_sycl, n_qubits, target_list[i], matrix_sycl);
     }
     q.wait();
-    auto ed_time = std::chrono::system_clock::now();
+    auto ed_time = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ed_time - st_time).count();
 }
 
 double double_control_matrix_bench(UINT n_qubits) {
@@ -506,15 +506,15 @@ double double_control_matrix_bench(UINT n_qubits) {
 
     sycl::queue q(sycl::gpu_selector_v);
     auto state_sycl = sycl::buffer(state_test.data(), sycl::range<1>(1 << n_qubits));
-    auto st_time =std::chrono::system_clock::now();
+    auto st_time =std::chrono::high_resolution_clock::now();
     for(UINT i = 0; i < 10; i++) {
         auto matrix_sycl = sycl::buffer(matrix[i].data(), sycl::range<2>(4, 4));
         update_with_dense_matrix_controlled(q, state_sycl, n_qubits, control_list[i], control_value[i], {target[i]}, matrix_sycl);
     }
     q.wait();
-    auto ed_time = std::chrono::system_clock::now();
+    auto ed_time = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(ed_time - st_time).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ed_time - st_time).count();
 }
 
 int main(int argc, char** argv) {
@@ -554,7 +554,7 @@ int main(int argc, char** argv) {
             t = double_control_matrix_bench(n_qubits);
             break;
         }
-        ofs << t << " ";
+        ofs << t / 1000000. << " ";
     }
     ofs << std::endl;
     return 0;
