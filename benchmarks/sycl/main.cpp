@@ -532,6 +532,7 @@ int main(int argc, char** argv) {
         std::cerr << "Failed to open file" << std::endl;
         return 1;
     }
+    single_qubit_bench(3); // warmup
     for (int i = 0; i < n_repeats; i++) {
         double t;
         switch(circuit_id) {
