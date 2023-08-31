@@ -198,13 +198,17 @@ double double_control_matrix_bench(UINT n_qubits) {
         control_list[0] = target_gen_1(mt); if(target == control_list[0]) control_list[0] = n_qubits - 1;
         control_list[1] = target_gen_2(mt);
         if(target == control_list[1]) control_list[1] = n_qubits - 2;
-        if(control_list[0] == control_list[1]) control_list[1] = n_qubits - 1;
+        if(control_list[0] == control_list[1]) {
+            if(n_qubits - 1 == target) control_list[1] = n_qubits - 2;
+            else control_list[1] = n_qubits - 1;
+        }
         std::vector<UINT> control_value(2);
         for(int j = 0; j < 2; j++) control_value[j] = binary_gen(mt);
         ComplexMatrix mat(2, 2);
         for(int j = 0; j < 2; j++) for(int k = 0; k < 2; k++) {
             mat(j, k) = {normal(mt), normal(mt)};
         }
+        std::cerr << target << " " << control_list[0] << " " << control_list[1] << std::endl;
         auto matrix_gate = gate::DenseMatrix(target, mat);
         matrix_gate->add_control_qubit(control_list[0], control_value[0]);
         matrix_gate->add_control_qubit(control_list[1], control_value[1]);
