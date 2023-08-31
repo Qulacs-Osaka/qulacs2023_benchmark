@@ -336,7 +336,10 @@ double double_control_matrix_bench(UINT qubit){
         control_list[i][0] = target_gen_1(mt); if(target[i] == control_list[i][0]) control_list[i][0] = qubit - 1;
         control_list[i][1] = target_gen_2(mt);
         if(control_list[i][1] == target[i]) control_list[i][1] = qubit-2;
-        if(control_list[i][0] == control_list[i][1]) control_list[i][1] = qubit-1;
+        if(control_list[i][0] == control_list[i][1]) {
+            if(qubit - 1 == target[i]) control_list[i][1] = qubit-2;
+            else control_list[i][1] = qubit-1;
+        }
         for(int j=0;j<2;j++) control_value[i][j] = binary_gen(mt);
         for(int j=0;j<4;j++) matrix[i][j] = {normal(mt), normal(mt)};
     }
