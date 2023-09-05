@@ -99,10 +99,10 @@ def render_docker_config(target: str) -> tuple[str, str]:
 
 
 @click.command
-@click.option("--target", "-t", default=["qulacs"], multiple=True, help="Benchmark target. Specify directory name of benchmark code")
+@click.option("--target", "-t", default=["qulacs_now", "qulacs_cpu" "kokkos", "sycl"], multiple=True, help="Benchmark target. Specify directory name of benchmark code")
 @click.option("--circuits", "-c", default=[0, 1, 2, 3, 4, 5], multiple=True, help="Circuit type. Specify circuit ID defined in README.md")
 @click.option("--warmup", "-w", default=3, type=int, help="Number of times to discard benchmark results ahead of actual benchmark")
-@click.option("--n-qubits-begin", "-b", default=2, type=int, help="Number of qubits to start benchmark")
+@click.option("--n-qubits-begin", "-b", default=3, type=int, help="Number of qubits to start benchmark")
 @click.option("--n-qubits-end", "-e", default=26, type=int, help="Number of qubits to end benchmark, exclusive")
 @click.option("--n-repeat", "-r", default=10, type=int, help="Number of times to repeat benchmark")
 def main(target: list[str], circuits: list[int], warmup: int, n_qubits_begin: int, n_qubits_end: int, n_repeat: int):
