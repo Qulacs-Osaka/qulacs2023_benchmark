@@ -13,84 +13,208 @@ using ITYPE = unsigned long long;
 using CTYPE = Kokkos::complex<double>;
 using TeamHandle = Kokkos::TeamPolicy<>::member_type;
 
-void update_with_x(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
-        ITYPE j = i | (1ULL << target);
-        Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[j]);
+const int warp_size = 32;
+
+void apply_x_shfl(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+    assert((1ULL << target) < warp_size);
+    Kokkos::parallel_for(1ULL << n_qubits, [=] __device__ (const ITYPE& i) {
+        state(i) = CTYPE{
+            __shfl_xor_sync(0xffffffff, state(i).real(), 1ULL << target),
+            __shfl_xor_sync(0xffffffff, state(i).imag(), 1ULL << target)
+        };
     });
 }
 
-void update_with_y(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
-        ITYPE j = i | (1ULL << target);
-        Kokkos::Experimental::swap(state_kokkos[i], state_kokkos[j]);
-        state_kokkos[i] *= CTYPE(0, 1);
-        state_kokkos[j] *= CTYPE(0, -1);
+void apply_x_nrml(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+    const ITYPE low_mask = (1ULL << target) - 1;
+    const ITYPE high_mask = ~low_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA (const ITYPE& it) {
+        ITYPE i = (it & high_mask) << 1 | (it & low_mask);
+        Kokkos::Experimental::swap(state[i], state[i | (1ULL << target)]);
     });
 }
 
-void update_with_z(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it | (1ULL << target);
-        state_kokkos[i] *= -1;
+void update_with_x(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+#ifdef KOKKOS_ENABLE_CUDA
+    if ((1ULL << target) < warp_size) {
+        apply_x_shfl(state, n_qubits, target);
+    } else {
+        apply_x_nrml(state, n_qubits, target);
+    }
+#else 
+    apply_x_nrml(state, n_qubits, target);
+#endif
+}
+
+
+void apply_y_shfl(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+    assert((1ULL << target) < warp_size);
+    Kokkos::parallel_for(1ULL << n_qubits, [=] __device__ (const ITYPE& i) {
+        CTYPE tmp_i = state(i);
+        state(i) =
+        CTYPE(
+            -__shfl_xor_sync(0xffffffff, tmp_i.imag(), 1ULL << target),
+            __shfl_xor_sync(0xffffffff, tmp_i.real(), 1ULL << target)
+        ) * (i >> target & 1 ? 1 : -1);
     });
 }
 
-void update_with_h(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, UINT target) {
+void apply_y_nrml(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+    const ITYPE low_mask = (1ULL << target) - 1;
+    const ITYPE high_mask = ~low_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA (const ITYPE& it) {
+        ITYPE i = (it & high_mask) << 1 | (it & low_mask);
+        ITYPE j = i | 1ULL << target;
+        Kokkos::Experimental::swap(state[i], state[j]);
+        state[i] *= CTYPE(0, -1);
+        state[j] *= CTYPE(0, 1);
+    });
+}
+
+void update_with_y(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+#ifdef KOKKOS_ENABLE_CUDA
+    if ((1ULL << target) < warp_size) {
+        apply_y_shfl(state, n_qubits, target);
+    } else {
+        apply_y_nrml(state, n_qubits, target);
+    }
+#else 
+    apply_y_nrml(state, n_qubits, target);
+#endif
+}
+
+void update_with_z(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+    const ITYPE low_mask = (1ULL << target) - 1;
+    const ITYPE upper_mask = ~low_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA (const ITYPE& it) {
+        state[(it & upper_mask) << 1 | (it & low_mask) | 1ULL << target] *= -1;
+    });
+}
+
+void apply_h_shfl(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
     const double inv_sqrt_2 = 1. / sqrt(2.);
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
-        ITYPE j = i | (1ULL << target);
-        CTYPE temp_i = state_kokkos[i];
-        CTYPE temp_j = state_kokkos[j];
-        state_kokkos[i] = inv_sqrt_2 * (temp_i + temp_j);
-        state_kokkos[j] = inv_sqrt_2 * (temp_i - temp_j);
+    Kokkos::parallel_for(1ULL << n_qubits, [=] __device__ (const ITYPE& i) {
+        CTYPE tmp_i = state(i);
+        state(i) = inv_sqrt_2 * (tmp_i * (i >> target & 1 ? -1 : 1) +
+        CTYPE(
+            __shfl_xor_sync(0xffffffff, tmp_i.real(), 1ULL << target),
+            __shfl_xor_sync(0xffffffff, tmp_i.imag(), 1ULL << target)
+        ));
     });
 }
 
-
-void update_with_Rx(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
-    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
-        ITYPE j = i | (1ULL << target);
-        CTYPE temp_i = state_kokkos[i];
-        CTYPE temp_j = state_kokkos[j];
-        state_kokkos[i] = cos_half * temp_i - CTYPE(0, 1) * sin_half * temp_j;
-        state_kokkos[j] = cos_half * temp_j - CTYPE(0, 1) * sin_half * temp_i;
+void apply_h_nrml(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+    const ITYPE lower_mask = (1ULL << target) - 1;
+    const ITYPE upper_mask = ~lower_mask;
+    const double inv_sqrt_2 = 1. / sqrt(2.);
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA (const ITYPE& it) {
+        ITYPE i = (it & upper_mask) << 1 | (it & lower_mask);
+        ITYPE j = i | 1ULL << target;
+        CTYPE tmp_i = state[i];
+        CTYPE tmp_j = state[j];
+        state[i] = inv_sqrt_2 * (tmp_i + tmp_j);
+        state[j] = inv_sqrt_2 * (tmp_i - tmp_j);
     });
 }
 
-void update_with_Ry(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
-    const double angle_half = angle / 2, sin_half = Kokkos::sin(angle_half), cos_half = Kokkos::cos(angle_half);
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
-        ITYPE j = i | (1ULL << target);
-        CTYPE temp_i = state_kokkos[i];
-        CTYPE temp_j = state_kokkos[j];
-        state_kokkos[i] = cos_half * temp_i + sin_half * temp_j;
-        state_kokkos[j] = cos_half * temp_j - sin_half * temp_i;
+void update_with_h(Kokkos::View<CTYPE*> &state, UINT n_qubits, UINT target) {
+#ifdef KOKKOS_ENABLE_CUDA
+    if ((1ULL << target) < warp_size) {
+        apply_h_shfl(state, n_qubits, target);
+    } else {
+        apply_h_nrml(state, n_qubits, target);
+    }
+#else 
+    apply_h_nrml(state, n_qubits, target);
+#endif
+}
+
+void apply_Rx_shfl(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+    assert((1ULL << target) < warp_size);
+    double sin_half = Kokkos::sin(angle / 2), cos_half = Kokkos::cos(angle / 2);
+    Kokkos::parallel_for(1 << n_qubits, [=] __device__ (const ITYPE& i) {
+        CTYPE tmp_i = state(i);
+        CTYPE tmp_j(
+            __shfl_xor_sync(0xffffffff, tmp_i.real(), 1 << target),
+            __shfl_xor_sync(0xffffffff, tmp_i.imag(), 1 << target)
+        );
+        state(i) = cos_half * tmp_i - CTYPE(0, 1) * sin_half * tmp_j;
     });
 }
 
-void update_with_Rz(Kokkos::View<CTYPE*> &state_kokkos, UINT n_qubits, double angle, UINT target) {
-    const double angle_half = angle / 2;
-    const CTYPE phase0 = Kokkos::exp(CTYPE(0, -angle_half)), 
-                phase1 = Kokkos::exp(CTYPE(0, angle_half));
-    Kokkos::MDRangePolicy<Kokkos::Rank<2>> policy({0, 0}, {1ULL << (n_qubits - target - 1), 1ULL << target});
-    Kokkos::parallel_for(policy, KOKKOS_LAMBDA(const ITYPE& upper_bit_it, const ITYPE &lower_bit_it) {
-        ITYPE i = (upper_bit_it << (target + 1)) | lower_bit_it;
-        ITYPE j = i | (1ULL << target);
-        state_kokkos[i] *= phase0;
-        state_kokkos[j] *= phase1;
+void apply_Rx_nrml(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+    double sin_half = Kokkos::sin(angle / 2), cos_half = Kokkos::cos(angle / 2);
+    const ITYPE lower_mask = (1ULL << target) - 1;
+    const ITYPE upper_mask = ~lower_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), [=] __device__ (const ITYPE& it) {
+        ITYPE i = (it & upper_mask) << 1 | (it & lower_mask);
+        ITYPE j = i | (1ULL << target); 
+        CTYPE tmp_i = state[i];
+        CTYPE tmp_j = state[j];
+        state[i] = cos_half * tmp_i - CTYPE(0, 1) * sin_half * tmp_j;
+        state[j] = cos_half * tmp_j - CTYPE(0, 1) * sin_half * tmp_i;
+    });
+}
+
+void update_with_Rx(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+#ifdef KOKKOS_ENABLE_CUDA
+    if ((1ULL << target) < warp_size) {
+        apply_Rx_shfl(state, n_qubits, angle, target);
+    } else {
+        apply_Rx_nrml(state, n_qubits, angle, target);
+    }
+#else 
+    apply_Rx_nrml(state, n_qubits, angle, target);
+#endif
+}
+
+void apply_Ry_shfl(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+    const double sin_half = Kokkos::sin(angle / 2), cos_half = Kokkos::cos(angle / 2);
+    Kokkos::parallel_for(1ULL << n_qubits, [=] __device__ (const ITYPE& i) {
+        CTYPE tmp_i = state(i);
+        state(i) = cos_half * tmp_i - sin_half * CTYPE(
+            __shfl_xor_sync(0xffffffff, tmp_i.real(), 1ULL << target),
+            __shfl_xor_sync(0xffffffff, tmp_i.imag(), 1ULL << target)
+        ) * ((i >> target) & 1 ? -1 : 1);
+    });
+}
+
+void apply_Ry_nrml(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+    const double sin_half = Kokkos::sin(angle / 2), cos_half = Kokkos::cos(angle / 2);
+    const ITYPE lower_mask = (1ULL << target) - 1;
+    const ITYPE upper_mask = ~lower_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA(const ITYPE& it) {
+        ITYPE i = ((it & upper_mask) << 1) | (it & lower_mask);
+        ITYPE j = i | (1ULL << target); 
+        CTYPE tmp_i = state[i];
+        CTYPE tmp_j = state[j];
+        state[i] = cos_half * tmp_i - sin_half * tmp_j;
+        state[j] = cos_half * tmp_j + sin_half * tmp_i;
+    });
+}
+
+void update_with_Ry(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+#ifdef KOKKOS_ENABLE_CUDA
+    if ((1ULL << target) < warp_size) {
+        apply_Ry_shfl(state, n_qubits, angle, target);
+    } else {
+        apply_Ry_nrml(state, n_qubits, angle, target);
+    }
+#else 
+    apply_Ry_nrml(state, n_qubits, angle, target);
+#endif
+}
+
+void update_with_Rz(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
+    const CTYPE phase0 = Kokkos::exp(CTYPE(0, - angle / 2)), 
+                phase1 = Kokkos::exp(CTYPE(0, angle / 2));
+    const ITYPE lower_mask = (1ULL << target) - 1;
+    const ITYPE upper_mask = ~lower_mask;
+    Kokkos::parallel_for(1ULL << (n_qubits - 1), KOKKOS_LAMBDA (const ITYPE& it) {
+        ITYPE i = (it & upper_mask) << 1 | (it & lower_mask);
+        ITYPE j = i | 1ULL << target;
+        state[i] *= phase0;
+        state[j] *= phase1;
     });
 }
 
