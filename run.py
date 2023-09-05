@@ -1,11 +1,12 @@
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from tqdm import tqdm
-import click
 import json
 import os
 import statistics
 import subprocess
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+import click
+from tqdm import tqdm
 
 
 @dataclass
@@ -17,7 +18,7 @@ class BenchmarkResult:
     n_repeat: int
     durations: list[float]
 
-    def save(self, output_directory: Path):
+    def save(self, output_directory: Path) -> None:
         data_file = output_directory / f"{self.target}_{self.circuit_id}.json"
         with data_file.open(mode="w") as f:
             d = asdict(self)
@@ -37,9 +38,26 @@ class BenchmarkCase:
 
     def run_one_benchmark(self, n_qubits: int, mount_config: str, image_tag: str) -> float:
         """Run benchmark for one circuit and one number of qubits"""
-        run_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/main", f"{self.circuit_id}", f"{n_qubits}", f"{self.n_repeat}"], capture_output=True)
+        run_result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-it",
+                "--gpus",
+                "all",
+                "--mount",
+                mount_config,
+                image_tag,
+                "/benchmarks/main",
+                f"{self.circuit_id}",
+                f"{n_qubits}",
+                f"{self.n_repeat}",
+            ],
+            capture_output=True,
+        )
         if run_result.returncode != 0:
-            raise RuntimeError(f"Failed to run {self.target} image: {run_result.stderr}")
+            raise RuntimeError(f"Failed to run {self.target} image: {run_result.stderr.decode()}")
 
         # Extract the benchmark data from not stdout, but a file because stdout is made dirty by output of CUDA image.
         durations_file = Path(f"./benchmarks/{self.target}/durations.txt")
@@ -63,8 +81,11 @@ class BenchmarkCase:
             means.append(mean)
         print("Finished benchmark")
 
-        return BenchmarkResult(self.target, self.circuit_id, self.n_qubits_begin, self.n_qubits_end, self.n_repeat, means)
+        return BenchmarkResult(
+            self.target, self.circuit_id, self.n_qubits_begin, self.n_qubits_end, self.n_repeat, means
+        )
 
+    @staticmethod
     def calculate_mean(output: str) -> float:
         """Calculate mean of time from output of subprocess.run()"""
         durations = list(map(float, output.split()))
@@ -77,15 +98,31 @@ def build_image(target: str) -> None:
     group_id = os.getgid()
     print("Building image")
     # Pass UID and GID to create user with same UID and GID as host user.
-    build_result = subprocess.run(["docker", "build", "--build-arg", f"USER_ID={user_id}", "--build-arg", f"GROUP_ID={group_id}", "-t", f"qulacs2023_benchmarks/{target}:latest", f"./benchmarks/{target}/"], capture_output=True)
+    build_result = subprocess.run(
+        [
+            "docker",
+            "build",
+            "--build-arg",
+            f"USER_ID={user_id}",
+            "--build-arg",
+            f"GROUP_ID={group_id}",
+            "-t",
+            f"qulacs2023_benchmarks/{target}:latest",
+            f"./benchmarks/{target}/",
+        ],
+        capture_output=True,
+    )
     if build_result.returncode != 0:
-        raise RuntimeError(f"Failed to build {target} image: {build_result.stderr}")
+        raise RuntimeError(f"Failed to build {target} image: {build_result.stderr.decode()}")
 
 
-def build_program(target: str, mount_config: str, image_tag:str) -> None:
+def build_program(target: str, mount_config: str, image_tag: str) -> None:
     """Build benchmark program in the docker container"""
     print("Building benchmark program")
-    build_result = subprocess.run(["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"], capture_output=True)
+    build_result = subprocess.run(
+        ["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"],
+        capture_output=True,
+    )
     if build_result.returncode != 0:
         raise RuntimeError(f"Failed to build a program in {target}.")
 
@@ -99,13 +136,29 @@ def render_docker_config(target: str) -> tuple[str, str]:
 
 
 @click.command
-@click.option("--target", "-t", default=["qulacs_now", "qulacs_cpu" "kokkos", "sycl"], multiple=True, help="Benchmark target. Specify directory name of benchmark code")
-@click.option("--circuits", "-c", default=[0, 1, 2, 3, 4, 5], multiple=True, help="Circuit type. Specify circuit ID defined in README.md")
-@click.option("--warmup", "-w", default=3, type=int, help="Number of times to discard benchmark results ahead of actual benchmark")
+@click.option(
+    "--target",
+    "-t",
+    default=["qulacs_now", "qulacs_cpu" "kokkos", "sycl"],
+    multiple=True,
+    help="Benchmark target. Specify directory name of benchmark code",
+)
+@click.option(
+    "--circuits",
+    "-c",
+    default=[0, 1, 2, 3, 4, 5],
+    multiple=True,
+    help="Circuit type. Specify circuit ID defined in README.md",
+)
+@click.option(
+    "--warmup", "-w", default=3, type=int, help="Number of times to discard benchmark results ahead of actual benchmark"
+)
 @click.option("--n-qubits-begin", "-b", default=3, type=int, help="Number of qubits to start benchmark")
 @click.option("--n-qubits-end", "-e", default=26, type=int, help="Number of qubits to end benchmark, exclusive")
 @click.option("--n-repeat", "-r", default=10, type=int, help="Number of times to repeat benchmark")
-def main(target: list[str], circuits: list[int], warmup: int, n_qubits_begin: int, n_qubits_end: int, n_repeat: int):
+def main(
+    target: list[str], circuits: list[int], warmup: int, n_qubits_begin: int, n_qubits_end: int, n_repeat: int
+) -> None:
     for t in target:
         mount_config, image_tag = render_docker_config(t)
         build_image(t)
