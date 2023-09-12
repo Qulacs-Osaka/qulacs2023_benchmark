@@ -2,11 +2,14 @@ import json
 import os
 import statistics
 import subprocess
+import typing
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import click
 from tqdm import tqdm
+
+AggregateBy = typing.Literal["average", "median"]
 
 
 @dataclass
@@ -35,6 +38,7 @@ class BenchmarkCase:
     n_qubits_begin: int
     n_qubits_end: int
     n_repeat: int
+    aggregate_by: AggregateBy
 
     def run_one_benchmark(self, n_qubits: int, mount_config: str, image_tag: str) -> float:
         """Run benchmark for one circuit and one number of qubits"""
@@ -62,7 +66,7 @@ class BenchmarkCase:
         # Extract the benchmark data from not stdout, but a file because stdout is made dirty by output of CUDA image.
         durations_file = Path(f"./benchmarks/{self.target}/durations.txt")
         with durations_file.open() as f:
-            mean = BenchmarkCase.calculate_mean(f.read())
+            mean = BenchmarkCase.aggregate(f.read(), self.aggregate_by)
             return mean
 
     def run_benchmark(self) -> BenchmarkResult:
@@ -86,17 +90,22 @@ class BenchmarkCase:
         )
 
     @staticmethod
-    def calculate_mean(output: str) -> float:
-        """Calculate mean of time from output of subprocess.run()"""
+    def aggregate(output: str, aggregate_by: AggregateBy) -> float:
+        """Aggregate durations from output of subprocess.run()"""
         durations = list(map(float, output.split()))
-        return statistics.fmean(durations)
+        if aggregate_by == "average":
+            return statistics.fmean(durations)
+        elif aggregate_by == "median":
+            return statistics.median(durations)
+        else:
+            raise ValueError(f"Unknown aggregate_by: {aggregate_by}")
 
 
 def build_image(target: str) -> None:
     """Build docker image for benchmark"""
     user_id = os.getuid()
     group_id = os.getgid()
-    print("Building image")
+    print(f"Building image for {target}")
     # Pass UID and GID to create user with same UID and GID as host user.
     build_result = subprocess.run(
         [
@@ -118,7 +127,7 @@ def build_image(target: str) -> None:
 
 def build_program(target: str, mount_config: str, image_tag: str) -> None:
     """Build benchmark program in the docker container"""
-    print("Building benchmark program")
+    print(f"Building benchmark program for {target}")
     build_result = subprocess.run(
         ["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"],
         capture_output=True,
@@ -156,15 +165,24 @@ def render_docker_config(target: str) -> tuple[str, str]:
 @click.option("--n-qubits-begin", "-b", default=3, type=int, help="Number of qubits to start benchmark")
 @click.option("--n-qubits-end", "-e", default=26, type=int, help="Number of qubits to end benchmark, exclusive")
 @click.option("--n-repeat", "-r", default=10, type=int, help="Number of times to repeat benchmark")
+@click.option("--aggregate", "-a", default="average", type=click.Choice(["average", "median"]))
 def main(
-    target: list[str], circuits: list[int], warmup: int, n_qubits_begin: int, n_qubits_end: int, n_repeat: int
+    target: list[str],
+    circuits: list[int],
+    warmup: int,
+    n_qubits_begin: int,
+    n_qubits_end: int,
+    n_repeat: int,
+    aggregate: AggregateBy,
 ) -> None:
     for t in target:
         mount_config, image_tag = render_docker_config(t)
         build_image(t)
         build_program(t, mount_config, image_tag)
 
-    cases = [BenchmarkCase(t, c, warmup, n_qubits_begin, n_qubits_end, n_repeat) for t in target for c in circuits]
+    cases = [
+        BenchmarkCase(t, c, warmup, n_qubits_begin, n_qubits_end, n_repeat, aggregate) for t in target for c in circuits
+    ]
     results = [case.run_benchmark() for case in cases]
     for result in results:
         result.save(Path("output"))

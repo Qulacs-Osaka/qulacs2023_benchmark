@@ -28,7 +28,7 @@ format_check:
 
 .PHONY: lint
 lint:
-	$(LINTER) $(CHECK_DIR)
+	$(LINTER) $(SRC)
 
 .PHONY: type
 type:
