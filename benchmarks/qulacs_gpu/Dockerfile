@@ -23,9 +23,9 @@ RUN git clone https://github.com/qulacs/qulacs --depth 1 /qulacs \
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
-RUN groupadd -g ${GROUP_ID} qulacs_now \
-    && useradd -m -u ${USER_ID} -g qulacs_now -s /bin/bash qulacs_now
+RUN groupadd -g ${GROUP_ID} qulacs_gpu \
+    && useradd -m -u ${USER_ID} -g qulacs_gpu -s /bin/bash qulacs_gpu
 
-USER qulacs_now
+USER qulacs_gpu
 
 WORKDIR /benchmarks
