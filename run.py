@@ -148,7 +148,7 @@ def render_docker_config(target: str) -> tuple[str, str]:
 @click.option(
     "--target",
     "-t",
-    default=["qulacs_now", "qulacs_cpu" "kokkos", "sycl"],
+    default=["qulacs_cpu", "qulacs_gpu", "kokkos_cpu", "kokkos", "sycl"],
     multiple=True,
     help="Benchmark target. Specify directory name of benchmark code",
 )
