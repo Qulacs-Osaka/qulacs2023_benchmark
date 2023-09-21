@@ -19,10 +19,10 @@ class BenchmarkResult:
     n_qubits_begin: int
     n_qubits_end: int
     n_repeat: int
-    durations: list[float]
+    loopcnt: list[int]
 
     def save(self, output_directory: Path) -> None:
-        data_file = output_directory / f"{self.target}_{self.circuit_id}.json"
+        data_file = output_directory / f"{self.target}_{self.circuit_id}_loopcnt.json"
         with data_file.open(mode="w") as f:
             d = asdict(self)
             json.dump(d, f, indent=4)
@@ -40,7 +40,7 @@ class BenchmarkCase:
     n_repeat: int
     aggregate_by: AggregateBy
 
-    def run_one_benchmark(self, n_qubits: int, mount_config: str, image_tag: str) -> float:
+    def run_one_benchmark(self, n_qubits: int, mount_config: str, image_tag: str) -> int:
         """Run benchmark for one circuit and one number of qubits"""
         run_result = subprocess.run(
             [
@@ -64,8 +64,8 @@ class BenchmarkCase:
             raise RuntimeError(f"Failed to run {self.target} image: {run_result.stderr.decode()}")
 
         # Extract the benchmark data from not stdout, but a file because stdout is made dirty by output of CUDA image.
-        durations_file = Path(f"./benchmarks/{self.target}/durations.txt")
-        with durations_file.open() as f:
+        counts_file = Path(f"./benchmarks/{self.target}/loopcounts.txt")
+        with counts_file.open() as f:
             mean = BenchmarkCase.aggregate(f.read(), self.aggregate_by)
             return mean
 
@@ -90,13 +90,13 @@ class BenchmarkCase:
         )
 
     @staticmethod
-    def aggregate(output: str, aggregate_by: AggregateBy) -> float:
+    def aggregate(output: str, aggregate_by: AggregateBy) -> int:
         """Aggregate durations from output of subprocess.run()"""
-        durations = list(map(float, output.split()))
+        counts = list(map(int, output.split()))
         if aggregate_by == "average":
-            return statistics.fmean(durations)
+            return statistics.mean(counts)
         elif aggregate_by == "median":
-            return statistics.median(durations)
+            return statistics.median(counts)
         else:
             raise ValueError(f"Unknown aggregate_by: {aggregate_by}")
 
