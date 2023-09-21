@@ -11,6 +11,7 @@
 #include <cuda.h>
 #include <iomanip>
 
+using UINT = unsigned int;
 using Complex = std::complex<double>;
 
 double single_qubit_bench(UINT);
@@ -74,18 +75,12 @@ int main(int argc, char** argv){
 double single_qubit_bench(UINT qubit){
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
+    std::uniform_int_distribution<> target_gen(0, qubit-1), gate_gen(0, 3);
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
     for(int i=0;i<1<<qubit;i++){
         state_vector[i] = {normal(mt), normal(mt)};
-    }
-
-    std::vector<UINT> gate(10);
-    std::vector<UINT> target(10);
-    for(UINT i=0;i<10;i++){
-        gate[i] = mt() % 4;
-        target[i] = mt() % qubit;
     }
     state.load(state_vector);
 
@@ -94,24 +89,24 @@ double single_qubit_bench(UINT qubit){
     cudaEventRecord(start);
 
     for(UINT i=0;i<10;i++){
-        switch(gate[i]){
+        switch(gate_gen(mt)){
             case 0:{
-                auto gateX = gate::X(target[i]);
+                auto gateX = gate::X(target_gen(mt));
                 gateX->update_quantum_state(&state);
                 break;
             }
             case 1:{
-                auto gateY = gate::Y(target[i]);
+                auto gateY = gate::Y(target_gen(mt));
                 gateY->update_quantum_state(&state);
                 break;
             }
             case 2:{
-                auto gateZ = gate::Z(target[i]);
+                auto gateZ = gate::Z(target_gen(mt));
                 gateZ->update_quantum_state(&state);
                 break;
             }
             case 3:{
-                auto gateH = gate::H(target[i]);
+                auto gateH = gate::H(target_gen(mt));
                 gateH->update_quantum_state(&state);
                 break;
             }
@@ -129,23 +124,13 @@ double single_qubit_bench(UINT qubit){
 double single_qubit_rotation_bench(UINT qubit){
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
-    std::uniform_int_distribution<> gate_gen(0, 2);
-    std::uniform_int_distribution<> target_gen(0, qubit-1);
+    std::uniform_int_distribution<> gate_gen(0, 2), target_gen(0, qubit-1);
     std::uniform_real_distribution<> angle_gen(0., M_PI*2);
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
     for(int i=0;i<(1<<qubit);i++){
         state_vector[i] = {normal(mt), normal(mt)};
-    }
-
-    std::vector<UINT> gate(10);
-    std::vector<UINT> target(10);
-    std::vector<double> angle(10);
-    for(UINT i=0;i<10;i++){
-        gate[i] = gate_gen(mt);
-        target[i] = target_gen(mt);
-        angle[i] = angle_gen(mt);
     }
 
     state.load(state_vector);
@@ -155,19 +140,19 @@ double single_qubit_rotation_bench(UINT qubit){
     cudaEventRecord(start);
 
     for(UINT i=0;i<10;i++){
-        switch(gate[i]){
+        switch(gate_gen(mt)){
             case 0:{
-                auto gateRX = gate::RX(target[i], angle[i]);
+                auto gateRX = gate::RX(target_gen(mt), angle_gen(mt));
                 gateRX->update_quantum_state(&state);
                 break;
             }
             case 1:{
-                auto gateRY = gate::RY(target[i], angle[i]);
+                auto gateRY = gate::RY(target_gen(mt), angle_gen(mt));
                 gateRY->update_quantum_state(&state);
                 break;
             }
             case 2:{
-                auto gateRZ = gate::RZ(target[i], angle[i]);
+                auto gateRZ = gate::RZ(target_gen(mt), angle_gen(mt));
                 gateRZ->update_quantum_state(&state);
                 break;
             }
@@ -185,21 +170,12 @@ double single_qubit_rotation_bench(UINT qubit){
 double cnot_bench(UINT qubit){
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
-    std::uniform_int_distribution<> target_gen(0, qubit-1);
-    std::uniform_real_distribution<> target_gen_1(0., qubit-2);
+    std::uniform_int_distribution<> gen(0, qubit-1);
 
     QuantumStateGpu state(qubit);
     std::vector<Complex> state_vector(1ULL << qubit);
     for(int i=0;i<1<<qubit;i++){
         state_vector[i] = {normal(mt), normal(mt)};
-    }
-
-    std::vector<UINT> target(10);
-    std::vector<UINT> control(10);
-    for(UINT i=0;i<10;i++){
-        target[i] = target_gen(mt);
-        control[i] = target_gen_1(mt);
-        if(control[i] == target[i]) control[i] = qubit-1;
     }
 
     state.load(state_vector);
@@ -209,9 +185,13 @@ double cnot_bench(UINT qubit){
     cudaEventRecord(start);
 
     for(UINT i=0;i<10;i++){
-        auto gateCNOT = gate::CNOT(control[i], target[i]);
+        UINT tar = gen(mt);
+        UINT ctrl = gen(mt);
+        while(tar == ctrl) ctrl = gen(mt);
+        auto gateCNOT = gate::CNOT(ctrl, tar);
         gateCNOT->update_quantum_state(&state);
     }
+
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float time = 0;
@@ -232,10 +212,10 @@ double single_target_matrix_bench(UINT qubit){
         state_vector[i] = {normal(mt), normal(mt)};
     }
 
-    std::vector<UINT> target(10);
+    std::vector<std::vector<UINT>> targets(10, std::vector<UINT>(1));
     std::vector<std::vector<Complex>> matrix(10, std::vector<Complex>(4));
     for(UINT i=0;i<10;i++){
-        target[i] = target_gen(mt);
+        targets[i][0] = target_gen(mt);
         for(int j=0;j<4;j++){
             matrix[i][j] = {normal(mt), normal(mt)};
         }
@@ -246,12 +226,14 @@ double single_target_matrix_bench(UINT qubit){
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
+    std::vector<UINT> target(1);
 
     for(UINT i=0;i<10;i++){
         ComplexMatrix mat(2, 2);
+        target[0] = targets[i][0];
         mat << matrix[i][0], matrix[i][1],
                matrix[i][2], matrix[i][3];
-        auto gateMatrix = gate::DenseMatrix(target[i], mat);
+        auto gateMatrix = gate::DenseMatrix(target, mat);
         gateMatrix->update_quantum_state(&state);
     }
 
@@ -292,14 +274,16 @@ double double_target_matrix_bench(UINT qubit){
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-
+    std::vector<UINT> target(2);
     for(UINT i=0;i<10;i++){
-        ComplexMatrix mat(4, 4);
+        target[0] = target_list[i][0];
+        target[1] = target_list[i][1];
+        ComplexMatrix mat(4, 4);   
         mat << matrix[i][0], matrix[i][1], matrix[i][2], matrix[i][3],
                matrix[i][4], matrix[i][5], matrix[i][6], matrix[i][7],
                matrix[i][8], matrix[i][9], matrix[i][10], matrix[i][11],
                matrix[i][12], matrix[i][13], matrix[i][14], matrix[i][15];
-        auto gateMatrix = gate::DenseMatrix(target_list[i], mat);
+        auto gateMatrix = gate::DenseMatrix(target, mat);
         gateMatrix->update_quantum_state(&state);
     }
 
@@ -349,13 +333,22 @@ double double_control_matrix_bench(UINT qubit){
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
+    std::vector<UINT> target_(1);
+    std::vector<UINT> control_(2);
+    std::vector<UINT> control_value_(2);
+    ComplexMatrix mat(2, 2);
+
     for(UINT i=0;i<10;i++){
-        ComplexMatrix mat(2, 2);
         mat << matrix[i][0], matrix[i][1],
                matrix[i][2], matrix[i][3];
-        auto gateMatrix = gate::DenseMatrix(target[i], mat);
-        gateMatrix->add_control_qubit(control_list[i][0], control_value[i][0]);
-        gateMatrix->add_control_qubit(control_list[i][1], control_value[i][1]);
+        target_[0] = target[i];
+        control_[0] = control_list[i][0];
+        control_[1] = control_list[i][1];
+        control_value_[0] = control_value[i][0];
+        control_value_[1] = control_value[i][1];
+        auto gateMatrix = gate::DenseMatrix(target_[0], mat);
+        gateMatrix->add_control_qubit(control_list_[0], control_value_[0]);
+        gateMatrix->add_control_qubit(control_list_[1], control_value_[1]);
         gateMatrix->update_quantum_state(&state);
     }
 
