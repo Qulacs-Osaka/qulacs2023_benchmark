@@ -16,11 +16,11 @@ using Complex = std::complex<double>;
 using LL = long long;
 
 LL single_qubit_bench(UINT);
-UINT single_qubit_rotation_bench(UINT);
-UINT cnot_bench(UINT);
-UINT single_target_matrix_bench(UINT);
-UINT double_target_matrix_bench(UINT);
-UINT double_control_matrix_bench(UINT);
+LL single_qubit_rotation_bench(UINT);
+LL cnot_bench(UINT);
+LL single_target_matrix_bench(UINT);
+LL double_target_matrix_bench(UINT);
+LL double_control_matrix_bench(UINT);
 
 cudaEvent_t start, stop;
 
