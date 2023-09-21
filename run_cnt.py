@@ -64,7 +64,7 @@ class BenchmarkCase:
             raise RuntimeError(f"Failed to run {self.target} image: {run_result.stderr.decode()}")
 
         # Extract the benchmark data from not stdout, but a file because stdout is made dirty by output of CUDA image.
-        counts_file = Path(f"./benchmarks/{self.target}/durations.txt")
+        counts_file = Path(f"./benchmarks/{self.target}/loopcounts.txt")
         with counts_file.open() as f:
             mean = BenchmarkCase.aggregate(f.read(), self.aggregate_by)
             return mean

@@ -33,7 +33,7 @@ int main(int argc, char** argv){
     UINT qubit = std::strtoul(argv[2], nullptr, 10);
     UINT repeat = std::strtoul(argv[3], nullptr, 10);
 
-    std::ofstream ofs("durations.txt");
+    std::ofstream ofs("loopcounts.txt");
     if (!ofs.is_open()) {
         std::cerr << "Failed to open file" << std::endl;
         return 1;
