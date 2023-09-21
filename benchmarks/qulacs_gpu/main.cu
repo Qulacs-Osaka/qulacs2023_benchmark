@@ -13,8 +13,9 @@
 
 using UINT = unsigned int;
 using Complex = std::complex<double>;
+using LL = long long;
 
-UINT single_qubit_bench(UINT);
+LL single_qubit_bench(UINT);
 UINT single_qubit_rotation_bench(UINT);
 UINT cnot_bench(UINT);
 UINT single_target_matrix_bench(UINT);
@@ -39,7 +40,7 @@ int main(int argc, char** argv){
     }
 
     for(int i=0;i<repeat;i++){
-        UINT t;
+        LL t;
         switch(circuit_id){
             case 0:{
                 t = single_qubit_bench(qubit);
@@ -72,7 +73,7 @@ int main(int argc, char** argv){
     return 0;
 }
 
-UINT single_qubit_bench(UINT qubit){
+LL single_qubit_bench(UINT qubit){
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
     std::uniform_int_distribution<> target_gen(0, qubit-1), gate_gen(0, 3);
@@ -88,7 +89,7 @@ UINT single_qubit_bench(UINT qubit){
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 
-    UINT loopcnt = 0;
+    LL loopcnt = 0;
 
     while(1){
         loopcnt++;
