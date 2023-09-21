@@ -14,12 +14,12 @@
 using UINT = unsigned int;
 using Complex = std::complex<double>;
 
-double single_qubit_bench(UINT);
-double single_qubit_rotation_bench(UINT);
-double cnot_bench(UINT);
-double single_target_matrix_bench(UINT);
-double double_target_matrix_bench(UINT);
-double double_control_matrix_bench(UINT);
+UINT single_qubit_bench(UINT);
+UINT single_qubit_rotation_bench(UINT);
+UINT cnot_bench(UINT);
+UINT single_target_matrix_bench(UINT);
+UINT double_target_matrix_bench(UINT);
+UINT double_control_matrix_bench(UINT);
 
 cudaEvent_t start, stop;
 
@@ -39,7 +39,7 @@ int main(int argc, char** argv){
     }
 
     for(int i=0;i<repeat;i++){
-        double t;
+        UINT t;
         switch(circuit_id){
             case 0:{
                 t = single_qubit_bench(qubit);
@@ -72,7 +72,7 @@ int main(int argc, char** argv){
     return 0;
 }
 
-double single_qubit_bench(UINT qubit){
+UINT single_qubit_bench(UINT qubit){
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
     std::uniform_int_distribution<> target_gen(0, qubit-1), gate_gen(0, 3);
@@ -88,7 +88,10 @@ double single_qubit_bench(UINT qubit){
     cudaEventCreate(&stop);
     cudaEventRecord(start);
 
-    for(UINT i=0;i<10;i++){
+    UINT loopcnt = 0;
+
+    while(1){
+        loopcnt++;
         switch(gate_gen(mt)){
             case 0:{
                 auto gateX = gate::X(target_gen(mt));
@@ -111,14 +114,15 @@ double single_qubit_bench(UINT qubit){
                 break;
             }
         }
+        cudaEventRecord(stop); 
+        float time = 0;
+        cudaEventElapsedTime(&time, start, stop); // msで計測
+        if(time > 1000) break;
     }
-    cudaEventRecord(stop);
     cudaEventSynchronize(stop);
-    float time = 0;
-    cudaEventElapsedTime(&time, start, stop); // msで計測
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    return time;
+    return loopcnt;
 }
 
 double single_qubit_rotation_bench(UINT qubit){
