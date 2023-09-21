@@ -233,6 +233,7 @@ LL single_target_matrix_bench(UINT qubit){
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     std::vector<UINT> target(1);
+    std::vector<Complex> matrix(4);
 
     LL loopcnt = 0;
 
@@ -240,8 +241,8 @@ LL single_target_matrix_bench(UINT qubit){
         loopcnt++;
         ComplexMatrix mat(2, 2);
         target[0] = target_gen(mt);
-        mat << {normal(mt), normal(mt)}, {normal(mt), normal(mt)},
-               {normal(mt), normal(mt)}, {normal(mt), normal(mt)};
+        for(int i=0;i<4;i++) matrix[i] = {normal(mt), normal(mt)};
+        mat << matrix[0], matrix[1], matrix[2], matrix[3];
         auto gateMatrix = gate::DenseMatrix(target, mat);
         gateMatrix->update_quantum_state(&state);
         cudaEventRecord(stop);
@@ -274,6 +275,7 @@ LL double_target_matrix_bench(UINT qubit){
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     std::vector<UINT> target(2);
+    std::vector<Complex> matrix(16);
 
     LL loopcnt = 0;
 
@@ -283,10 +285,11 @@ LL double_target_matrix_bench(UINT qubit){
         target[1] = target_gen_1(mt);
         if(target[0] == target[1]) target[1] = qubit-1;
         ComplexMatrix mat(4, 4);
-        mat << {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)},
-               {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)},
-               {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)},
-               {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)}, {normal(mt), normal(mt)};
+        for(int i=0;i<16;i++) matrix[i] = {normal(mt), normal(mt)};
+        mat << matrix[0], matrix[1], matrix[2], matrix[3],
+               matrix[4], matrix[5], matrix[6], matrix[7],
+               matrix[8], matrix[9], matrix[10], matrix[11],
+               matrix[12], matrix[13], matrix[14], matrix[15];
         auto gateMatrix = gate::DenseMatrix(target, mat);
         gateMatrix->update_quantum_state(&state);
         cudaEventRecord(stop);
@@ -324,14 +327,14 @@ LL double_control_matrix_bench(UINT qubit){
     std::vector<UINT> target(1);
     std::vector<UINT> control(2);
     std::vector<UINT> control_value(2);
-
+    std::vector<Complex> matrix(4);
     LL loopcnt = 0;
 
     while(1){
         loopcnt++;
         ComplexMatrix mat(2, 2);
-        mat << {normal(mt), normal(mt)}, {normal(mt), normal(mt)},
-               {normal(mt), normal(mt)}, {normal(mt), normal(mt)};
+        for(int i=0;i<4;i++) matrix[i] = {normal(mt), normal(mt)};
+        mat << matrix[0], matrix[1], matrix[2], matrix[3];
         target[0] = target_gen(mt);
         control[0] = target_gen_1(mt); 
         if(target[0] == control[0]) control[0] = qubit-1;
@@ -344,7 +347,7 @@ LL double_control_matrix_bench(UINT qubit){
         for(int i=0;i<2;i++) control_value[i] = binary_gen(mt);
         auto gateMatrix = gate::DenseMatrix(target[0], mat);
         gateMatrix->add_control_qubit(control[0], control_value[0]);
-        gateMatrix->add_control_qubit(control_list[1], control_value[1]);
+        gateMatrix->add_control_qubit(control[1], control_value[1]);
         gateMatrix->update_quantum_state(&state);
         
         cudaEventRecord(stop);
