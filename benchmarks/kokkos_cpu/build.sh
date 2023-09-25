@@ -7,7 +7,7 @@ if [ ! -d /benchmarks/kokkos ]; then
     # kokkosのビルドとインストール
     mkdir -p /benchmarks/kokkos/build && cd /benchmarks/kokkos/build
     cmake .. -DCMAKE_INSTALL_PREFIX=/benchmarks/install \
-        -DKokkos_ENABLE_SERIAL=ON
+        -DKokkos_ENABLE_SERIAL=ON -DKokkos_ARCH_ZEN2=ON
     make
     make install
 fi
@@ -15,7 +15,7 @@ fi
 # アプリケーションのビルド
 mkdir -p /benchmarks/build && cd /benchmarks/build
 cmake .. -DCMAKE_PREFIX_PATH=/benchmarks/install
-make
+make VERBOSE=1
 
 cp myTarget /benchmarks/main
 
