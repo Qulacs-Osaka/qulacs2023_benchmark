@@ -16,8 +16,9 @@ RUN apt-get update \
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists*
 
 RUN git clone https://github.com/qulacs/qulacs --depth 1 /qulacs \
-    && cd /qulacs \
-    && sh /qulacs/script/build_gcc.sh
+    && cd /qulacs
+COPY build_gcc.sh /qulacs/script/build_gcc.sh
+RUN sh /qulacs/script/build_gcc.sh
 
 ARG USER_ID=1000
 ARG GROUP_ID=1000
