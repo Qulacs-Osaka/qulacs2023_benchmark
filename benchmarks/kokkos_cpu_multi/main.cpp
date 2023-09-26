@@ -385,22 +385,28 @@ double single_target_bench(int n_qubits) {
     std::mt19937 mt(std::random_device{}());
 
     auto state(make_random_state(n_qubits));
+    std::vector<UINT> gate(10);
+    std::vector<UINT> target(10);
+    for(UINT i = 0; i < 10; i++) {
+        gate[i] = circuit_gen(mt);
+        target[i] = target_gen(mt);
+    }
     Kokkos::fence();
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
-        switch(circuit_gen(mt)) {
+        switch(gate[i]) {
             case 0:
-            update_with_x(state, n_qubits, target_gen(mt));
+            update_with_x(state, n_qubits, target[i]);
             break;
             case 1:
-            update_with_y(state, n_qubits, target_gen(mt));
+            update_with_y(state, n_qubits, target[i]);
             break;
             case 2:
-            update_with_z(state, n_qubits, target_gen(mt));
+            update_with_z(state, n_qubits, target[i]);
             break;
             case 3:
-            update_with_h(state, n_qubits, target_gen(mt));
+            update_with_h(state, n_qubits, target[i]);
             break;
         }
     }
@@ -415,19 +421,27 @@ double single_qubit_rotation_bench(int n_qubits) {
     std::mt19937 mt(std::random_device{}());
 
     auto state(make_random_state(n_qubits));
+    std::vector<UINT> gate(10);
+    std::vector<UINT> target(10);
+    std::vector<double> angle(10);
+    for(UINT i = 0; i < 10; i++) {
+        gate[i] = circuit_gen(mt);
+        target[i] = target_gen(mt);
+        angle[i] = angle_gen(mt);
+    }
     Kokkos::fence();
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
-        switch(circuit_gen(mt)) {
+        switch(gate[i]) {
             case 0:
-            update_with_Rx(state, n_qubits, angle_gen(mt), target_gen(mt));
+            update_with_Rx(state, n_qubits, angle[i], target[i]);
             break;
             case 1:
-            update_with_Ry(state, n_qubits, angle_gen(mt), target_gen(mt));
+            update_with_Ry(state, n_qubits, angle[i], target[i]);
             break;
             case 2:
-            update_with_Rz(state, n_qubits, angle_gen(mt), target_gen(mt));
+            update_with_Rz(state, n_qubits, angle[i], target[i]);
             break;
         }
     }
@@ -441,14 +455,17 @@ double cnot_bench(int n_qubits) {
     std::mt19937 mt(std::random_device{}());
 
     auto state(make_random_state(n_qubits));
+    std::vector<UINT> target(10), control(10);
+    for (int i = 0; i < 10; ++i) {
+        target[i] = gen(mt);
+        control[i] = gen(mt);
+        while (target[i] == control[i]) control[i] = gen(mt);
+    }
     Kokkos::fence();
 
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
-        int tar = gen(mt);
-        int ctrl = gen(mt);
-        while (tar == ctrl) ctrl = gen(mt);
-        update_with_CNOT(state, n_qubits, ctrl, tar);
+        update_with_CNOT(state, n_qubits, control[i], target[i]);
     }
     Kokkos::fence();
     auto end_time = std::chrono::high_resolution_clock::now();

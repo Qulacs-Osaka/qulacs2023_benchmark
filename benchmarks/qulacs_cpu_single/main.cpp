@@ -85,7 +85,7 @@ double cnot_bench(UINT n_qubits) {
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
     std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
-    std::uniform_real_distribution<> target_gen_1(0., n_qubits - 2);
+    std::uniform_int_distribution<> target_gen_1(0., n_qubits - 2);
 
     std::vector<Complex> state_original(1 << n_qubits);
     for(int i = 0; i < 1 << n_qubits; i++) {
@@ -232,6 +232,8 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: " << argv[0] << " <circuit_id> <n_qubits> <n_repeats>" << std::endl;
         return 1;
     }
+
+    std::putenv(const_cast<char*>("OMP_NUM_THREADS=1"));
 
     const auto circuit_id = std::strtoul(argv[1], nullptr, 10);
     const auto n_qubits = std::strtoul(argv[2], nullptr, 10);
