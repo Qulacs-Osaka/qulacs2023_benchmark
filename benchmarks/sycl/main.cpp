@@ -385,7 +385,7 @@ double cnot_bench(UINT n_qubits) {
     std::mt19937 mt(std::random_device{}());
     std::normal_distribution<> normal(0., 1.);
     std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
-    std::uniform_real_distribution<> target_gen_1(0., n_qubits - 2);
+    std::uniform_int_distribution<> target_gen_1(0., n_qubits - 2);
 
     std::vector<Complex> state_original(1 << n_qubits);
     for(int i = 0; i < 1 << n_qubits; i++) {
