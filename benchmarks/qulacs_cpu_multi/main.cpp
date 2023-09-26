@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    putenv(const_cast<char*>("QULACS_PARALLEL_NQUBIT_THRESHOLD=64")
+    putenv(const_cast<char*>("QULACS_PARALLEL_NQUBIT_THRESHOLD=64"));
 
     const auto circuit_id = std::strtoul(argv[1], nullptr, 10);
     const auto n_qubits = std::strtoul(argv[2], nullptr, 10);
