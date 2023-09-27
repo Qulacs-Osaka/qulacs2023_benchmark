@@ -51,7 +51,7 @@ class BenchmarkCase:
                 "--gpus",
                 "all",
                 "--env",
-                "OMP_PROC_BIND=TRUE"
+                "OMP_PROC_BIND=TRUE",
                 "--mount",
                 mount_config,
                 image_tag,
