@@ -49,6 +49,8 @@ class BenchmarkCase:
                 "--rm",
                 "-it",
                 "--gpus",
+                "--env",
+                "OMP_PROC_BIND=TRUE"
                 "all",
                 "--mount",
                 mount_config,
