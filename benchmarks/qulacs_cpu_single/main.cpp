@@ -234,6 +234,9 @@ int main(int argc, char** argv) {
     }
 
     putenv(const_cast<char*>("OMP_NUM_THREADS=1"));
+    putenv(const_cast<char*>("QULACS_NUM_THREADS=1"));
+    // putenv(const_cast<char*>("QULACS_PARALLEL_NQUBITS_THRESHOULD=99"));
+    // putenv(const_cast<char*>("QULACS_PARALLEL_NQUBIT_THRESHOLD=1"));
 
     const auto circuit_id = std::strtoul(argv[1], nullptr, 10);
     const auto n_qubits = std::strtoul(argv[2], nullptr, 10);

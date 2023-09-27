@@ -119,7 +119,7 @@ def build_image(target: str) -> None:
             f"qulacs2023_benchmarks/{target}:latest",
             f"./benchmarks/{target}/",
         ],
-        capture_output=True,
+        #capture_output=True,
     )
     if build_result.returncode != 0:
         raise RuntimeError(f"Failed to build {target} image: {build_result.stderr.decode()}")
@@ -130,7 +130,7 @@ def build_program(target: str, mount_config: str, image_tag: str) -> None:
     print(f"Building benchmark program for {target}")
     build_result = subprocess.run(
         ["docker", "run", "--rm", "-it", "--gpus", "all", "--mount", mount_config, image_tag, "/benchmarks/build.sh"],
-        capture_output=True,
+        #capture_output=True,
     )
     if build_result.returncode != 0:
         raise RuntimeError(f"Failed to build a program in {target}.")
