@@ -11,7 +11,6 @@
 
 #include "util.hpp"
 #include "gate.hpp"
-#include "batched_gate.hpp"
 
 int main(int argc, char *argv[]) {
 Kokkos::initialize();
@@ -23,8 +22,9 @@ Kokkos::initialize();
     }
 
     const auto n_qubits = std::strtoul(argv[1], nullptr, 10);
-    //auto [t1, t2] = x_bench(n_qubits, 1000, update_with_x, update_with_x);
-    auto [t1, t2] = Rx_bench(n_qubits, 1000, update_with_Rx, update_with_Rx_unroll);
+    warmup(n_qubits, 1000, update_with_x);
+    auto [t1, t2] = x_bench(n_qubits, 1000, update_with_x, update_with_x_unroll);
+    //auto [t1, t2] = Rx_bench(n_qubits, 1000, update_with_Rx, update_with_Rx_unroll);
     std::cout << t1 / 1000000. << " " << t2 / 1000000. << std::endl;
 
 }

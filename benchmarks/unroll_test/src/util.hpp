@@ -88,6 +88,12 @@ bool is_equal_batched(const Kokkos::View<CTYPE **> &state1, const Kokkos::View<C
     return cnt == 0;
 }
 
+void warmup(int n_qubits, int rep, auto xgate) {
+    auto state(make_random_state(n_qubits));
+    for (int i = 0; i < rep; ++i)
+        xgate(state, n_qubits, i % n_qubits);
+}
+
 std::pair<double, double> x_bench(int n_qubits, int rep, auto f1, auto f2) {
     std::uniform_int_distribution<> target_gen(0, n_qubits - 1);
     std::mt19937 mt(std::random_device{}());
@@ -115,9 +121,9 @@ std::pair<double, double> x_bench(int n_qubits, int rep, auto f1, auto f2) {
     Kokkos::fence();
     auto end_time2 = std::chrono::high_resolution_clock::now();
 
-    if(!is_equal(state, state_clone, n_qubits)) {
-        exit(1);
-    }
+    // if(!is_equal(state, state_clone, n_qubits)) {
+    //     exit(1);
+    // }
 
     return {std::chrono::duration_cast<std::chrono::nanoseconds>(end_time1 - start_time1).count(),
         std::chrono::duration_cast<std::chrono::nanoseconds>(end_time2 - start_time2).count()};

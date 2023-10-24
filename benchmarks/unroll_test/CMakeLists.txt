@@ -13,5 +13,3 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(myTarget src/main.cpp)
 target_link_libraries(myTarget Kokkos::kokkos)
-
-target_compile_definitions(myTarget PUBLIC KOKKOS_ENABLE_CUDA=1)

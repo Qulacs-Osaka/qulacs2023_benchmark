@@ -35,6 +35,7 @@ void update_with_Rx_batched(Kokkos::View<CTYPE **> &state, UINT n, double angle,
         });
 }
 
+#ifdef KOKKOS_ENABLE_CUDA
 void update_with_Rx_batched_shuffle(Kokkos::View<CTYPE **> &state, UINT n, double angle, UINT target)
 {
     double sin_half = Kokkos::sin(angle / 2), cos_half = Kokkos::cos(angle / 2);
@@ -52,3 +53,4 @@ void update_with_Rx_batched_shuffle(Kokkos::View<CTYPE **> &state, UINT n, doubl
             });
         });
 }
+#endif

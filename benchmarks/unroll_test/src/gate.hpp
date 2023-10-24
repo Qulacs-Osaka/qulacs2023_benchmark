@@ -27,6 +27,7 @@ void update_with_Rx(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UI
     });
 }
 
+#ifdef KOKKOS_ENABLE_CUDA
 void update_with_Rx_shuffle(Kokkos::View<CTYPE *> &state, UINT n_qubits, double angle, UINT target)
 {
     if (target >= 5) {
@@ -45,6 +46,7 @@ void update_with_Rx_shuffle(Kokkos::View<CTYPE *> &state, UINT n_qubits, double 
         });
     }
 }
+#endif
 
 void update_with_Rx_unroll(Kokkos::View<CTYPE*> &state, UINT n_qubits, double angle, UINT target) {
     const double sin_half = Kokkos::sin(angle / 2), cos_half = Kokkos::cos(angle / 2);
