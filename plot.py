@@ -30,12 +30,15 @@ def plot_n_qubits(targets: list[str], circuit_id: int, data_directory: Path, fig
 
 def main() -> None:
     #targets = [entry.name for entry in Path("benchmarks").iterdir() if entry.is_dir()]
-    targets = ["qulacs_cpu_single","qulacs_cpu_multi","kokkos_cpu_single","kokkos_cpu_multi"]
+    #targets = ["qulacs_cpu_single","qulacs_cpu_multi","kokkos_cpu_single","kokkos_cpu_multi"]
+    targets = ["kokkos", "kokkos_new", "qulacs_gpu"]
     figure_directory = Path("figures")
     figure_directory.mkdir(exist_ok=True)
 
-    for circuit_id in range(6):
-        plot_n_qubits(targets, circuit_id, Path("output"), figure_directory)
+    #for circuit_id in range(6):
+        #plot_n_qubits(targets, circuit_id, Path("output"), figure_directory)
+    plot_n_qubits(targets, 3, Path("output"), figure_directory)
+    plot_n_qubits(targets, 4, Path("output"), figure_directory)
 
 
 if __name__ == "__main__":
