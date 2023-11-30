@@ -29,11 +29,12 @@ def plot_n_qubits(targets: list[str], circuit_id: int, data_directory: Path, fig
 
 
 def main() -> None:
-    targets = [entry.name for entry in Path("benchmarks").iterdir() if entry.is_dir()]
+    #targets = [entry.name for entry in Path("benchmarks").iterdir() if entry.is_dir()]
+    targets = ['kokkos', 'kokkos_new', 'qulacs_gpu']
     figure_directory = Path("figures")
     figure_directory.mkdir(exist_ok=True)
 
-    for circuit_id in range(6):
+    for circuit_id in [3, 4, 5]:
         plot_n_qubits(targets, circuit_id, Path("output"), figure_directory)
 
 
