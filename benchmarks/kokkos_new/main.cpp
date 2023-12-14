@@ -271,11 +271,11 @@ void update_with_dense_matrix_single_target(Kokkos::View<CTYPE*> state_kokkos, U
 }
 
 void update_with_dense_matrix_double_target(Kokkos::View<CTYPE*> state_kokkos, UINT n_qubits, UINT target0, UINT target1, CTYPE matrix[16]) {
-    UINT target_high = target1, target_low = target0;
-    if(target_high < target_low) Kokkos::Experimental::swap(target_high, target_low);
+
+    auto [target_low, target_high] = Kokkos::minmax(target0, target1);
     const ITYPE lower_mask = (1ULL << target_low) - 1;
     const ITYPE middle_mask = ((1ULL << (target_high-1)) - 1) & ~lower_mask;
-    const ITYPE upper_mask = ~lower_mask | ~middle_mask;
+    const ITYPE upper_mask = ~(lower_mask | middle_mask);
     CTYPE matrix0 = matrix[0], matrix1 = matrix[1], matrix2 = matrix[2], matrix3 = matrix[3], matrix4 = matrix[4], matrix5 = matrix[5], matrix6 = matrix[6], matrix7 = matrix[7], matrix8 = matrix[8], matrix9 = matrix[9], matrix10 = matrix[10], matrix11 = matrix[11], matrix12 = matrix[12], matrix13 = matrix[13], matrix14 = matrix[14], matrix15 = matrix[15];
     Kokkos::parallel_for(1ULL << (n_qubits - 2), KOKKOS_LAMBDA (const ITYPE& it) {
         ITYPE i = (it & upper_mask) << 2 | (it & middle_mask) << 1 | (it & lower_mask);
@@ -299,8 +299,8 @@ void update_with_dense_matrix_single_target_double_control(Kokkos::View<CTYPE*> 
     if(qubit2 < qubit1) std::swap(qubit2, qubit1);
     const ITYPE mask0 = (1ULL << qubit0) - 1;
     const ITYPE mask1 = ((1ULL << (qubit1-1)) - 1) & ~mask0;
-    const ITYPE mask2 = ((1ULL << (qubit2-2)) - 1) & ~mask0 & ~mask1;
-    const ITYPE mask3 = ~mask0 | ~mask1 | ~mask2;
+    const ITYPE mask2 = ((1ULL << (qubit2-2)) - 1) & ~(mask0 | mask1);
+    const ITYPE mask3 = ~(mask0 | mask1 | mask2);
     const ITYPE control_mask = value0 << control0 | value1 << control1;
     CTYPE matrix0 = matrix[0], matrix1 = matrix[1], matrix2 = matrix[2], matrix3 = matrix[3];
     Kokkos::parallel_for(1ULL << (n_qubits - 3), KOKKOS_LAMBDA (const ITYPE& it) {
@@ -527,7 +527,9 @@ double single_target_matrix_bench(UINT n_qubits) {
     });
         
     decltype(targets)::HostMirror targets_host = Kokkos::create_mirror_view(targets);
+    Kokkos::deep_copy(targets_host, targets);
     decltype(matrixes)::HostMirror matrixes_host = Kokkos::create_mirror_view(matrixes);
+    Kokkos::deep_copy(matrixes_host, matrixes);
     auto start_time = std::chrono::system_clock::now();
     // Kokkos::View<CTYPE*> matrix("matrix", 4);
     for (int i = 0; i < 10; ++i) {
@@ -568,7 +570,9 @@ double double_target_matrix_bench(UINT n_qubits) {
     });
         
     decltype(targets)::HostMirror targets_host = Kokkos::create_mirror_view(targets);
+    Kokkos::deep_copy(targets_host, targets);
     decltype(matrixes)::HostMirror matrixes_host = Kokkos::create_mirror_view(matrixes);
+    Kokkos::deep_copy(matrixes_host, matrixes);
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
         UINT target0 = targets_host(i, 0), target1 = targets_host(i, 1);
@@ -621,9 +625,13 @@ double double_control_matrix_bench(UINT n_qubits) {
     });
         
     decltype(targets)::HostMirror targets_host = Kokkos::create_mirror_view(targets);
+    Kokkos::deep_copy(targets_host, targets);
     decltype(control_list)::HostMirror control_list_host = Kokkos::create_mirror_view(control_list);
+    Kokkos::deep_copy(control_list_host, control_list);
     decltype(control_values)::HostMirror control_values_host = Kokkos::create_mirror_view(control_values);
+    Kokkos::deep_copy(control_values_host, control_values);
     decltype(matrixes)::HostMirror matrixes_host = Kokkos::create_mirror_view(matrixes);
+    Kokkos::deep_copy(matrixes_host, matrixes);
     auto start_time = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 10; ++i) {
         UINT target = targets_host(i, 0);
